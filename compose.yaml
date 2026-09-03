@@ -1,0 +1,9 @@
+services:
+  calify:
+    build:
+      context: .
+    container_name: calify
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8092:80"
+
