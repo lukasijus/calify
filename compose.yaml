@@ -2,8 +2,9 @@ services:
   calify:
     build:
       context: .
+      args:
+        CALIFY_BASE_PATH: /calify
     container_name: calify
     restart: unless-stopped
     ports:
       - "127.0.0.1:8092:80"
-

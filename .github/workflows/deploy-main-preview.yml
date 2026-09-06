@@ -1,0 +1,39 @@
+name: Deploy Calify main preview
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: calify-main-preview
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Linux, ARM64]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+
+      - name: Build and restart Calify main
+        run: docker compose -f compose.yaml up -d --build --force-recreate calify
+
+      - name: Verify Calify main preview
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error http://127.0.0.1:8092/calify >/dev/null; then
+              break
+            fi
+            if test "$attempt" = 30; then
+              docker compose -f compose.yaml logs --no-color --tail=100 calify
+              exit 1
+            fi
+            sleep 2
+          done
+          curl --fail --silent --show-error --insecure \
+            https://jetson.tail68fd31.ts.net/calify >/dev/null
+          echo "Main preview deployed from $(git rev-parse HEAD)"
