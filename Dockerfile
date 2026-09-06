@@ -5,6 +5,8 @@ RUN corepack enable && pnpm install --frozen-lockfile
 
 FROM node:22-alpine AS builder
 WORKDIR /app
+ARG CALIFY_BASE_PATH=/calify
+ENV CALIFY_BASE_PATH=$CALIFY_BASE_PATH
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
 RUN corepack enable && pnpm build
