@@ -1,0 +1,66 @@
+import { test, expect } from '@playwright/test';
+import { readdirSync } from 'node:fs';
+import path from 'node:path';
+
+test('navigation, local weight persistence, downloads and screenshots', async ({ page }, testInfo) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('./');
+  await expect(page.getByRole('heading', { name: 'Main', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Front view' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Side view' })).toBeVisible();
+  await page.getByLabel('Date', { exact: true }).fill('2026-09-08');
+  await page.getByLabel('Weight (kg)', { exact: true }).fill('75.2');
+  await page.getByRole('button', { name: 'Save entry' }).click();
+  await page.reload();
+  await expect(page.getByRole('cell', { name: '75.2', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Edit weight 2026-09-08' }).click();
+  await page.getByLabel('Weight (kg)', { exact: true }).fill('75.5');
+  await page.getByRole('button', { name: 'Save entry' }).click();
+  await expect(page.getByRole('cell', { name: '75.5', exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('main.png'), fullPage: true });
+  if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click();
+  await page.getByRole('link', { name: 'Calibration', exact: true }).click();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Calibration', exact: true })).toBeVisible();
+  // Same-origin static files must retain the PR prefix.
+  const response = await page.request.get('calibration/board.json');
+  expect(response.ok()).toBeTruthy();
+  expect((await response.json()).widthMm).toBe(150);
+  await page.getByRole('button', { name: 'Prepare printable plate' }).click();
+  const downloadLink = page.getByRole('link', { name: 'Download A4 SVG' });
+  await expect(downloadLink).toBeVisible({ timeout: 180_000 });
+  const downloadEvent = page.waitForEvent('download');
+  await downloadLink.click();
+  const download = await downloadEvent;
+  expect(download.suggestedFilename()).toBe('calify-charuco-v1-a4.svg');
+  await download.saveAs(testInfo.outputPath('plate.svg'));
+  await expect(page.getByText(/detected all 24 corners/)).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('calibration.png'), fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click();
+  await page.getByRole('link', { name: 'Main', exact: true }).click();
+  await expect(page.getByRole('cell', { name: '75.5', exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('real browser solver on the synthetic known-camera dataset', async ({ page }) => {
+  const dataset = process.env.CALIFY_TEST_ARTIFACTS;
+  test.skip(!dataset, 'Generate the synthetic dataset with the Python validation first.');
+  const files = readdirSync(dataset!).filter(f => /^view-.*\.png$/.test(f)).sort().map(f => path.join(dataset!, f));
+  expect(files).toHaveLength(12);
+  await page.goto('calibration');
+  await page.getByRole('checkbox').check();
+  await page.getByLabel('Camera / device').fill('Synthetic 1280 × 960 pinhole');
+  await page.getByLabel('Lens, zoom and focus setting').fill('fx 1050, fy 1030, no distortion');
+  await page.getByLabel('Board images', { exact: true }).setInputFiles(files);
+  await expect(page.getByText('12 usable / 12 uploaded', { exact: false })).toBeVisible({ timeout: 180_000 });
+  await page.getByRole('button', { name: 'Calibrate camera', exact: true }).click();
+  await expect(page.getByText(/Parameters computed, not yet saved/)).toBeVisible({ timeout: 90_000 });
+  await page.getByRole('button', { name: 'Save setup locally' }).click();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: /Saved: Synthetic/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Reset saved profile' }).click();
+  await page.reload();
+  await expect(page.getByText(/No usable profile saved/)).toBeVisible();
+});

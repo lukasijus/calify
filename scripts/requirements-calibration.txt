@@ -1,0 +1,3 @@
+# Native test/generation runtime matching the browser's OpenCV version.
+opencv-python-headless==4.11.0.86
+numpy==2.2.6

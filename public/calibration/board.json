@@ -1,0 +1,14 @@
+{
+  "version": "calify-charuco-v1",
+  "dictionary": "DICT_5X5_100",
+  "squaresX": 5,
+  "squaresY": 7,
+  "squareMm": 30,
+  "markerMm": 21,
+  "widthMm": 150,
+  "heightMm": 210,
+  "pageWidthMm": 210,
+  "pageHeightMm": 297,
+  "referenceMm": 100,
+  "legacyPattern": false
+}
