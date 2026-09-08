@@ -7,6 +7,7 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
+ARG CALIFY_BASE_PATH=/calify
 RUN corepack enable && pnpm build
 
 FROM node:22-alpine AS runner
@@ -20,6 +21,7 @@ RUN addgroup --system --gid 1001 nodejs \
 
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 USER nextjs
 EXPOSE 80

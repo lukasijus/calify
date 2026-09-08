@@ -43,3 +43,8 @@ next-env.d.ts
 README_bootstrap.md 
 
 
+# Local calibration/browser validation artifacts
+.venv/
+__pycache__/
+/test-results/
+/playwright-report/
