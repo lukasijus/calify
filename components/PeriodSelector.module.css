@@ -1,0 +1,25 @@
+.group {
+  display: inline-flex;
+  gap: 0.125rem;
+  background: var(--weight-surface);
+  border-radius: 999px;
+  padding: 0.1875rem;
+}
+
+.option,
+.active {
+  border: none;
+  background: transparent;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 0.375rem 0.625rem;
+  border-radius: 999px;
+  cursor: pointer;
+  color: var(--weight-muted);
+}
+
+.active {
+  background: var(--weight-bg);
+  color: var(--weight-ink);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
