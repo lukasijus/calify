@@ -1,0 +1,94 @@
+.wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  /* Matches CHART_WIDTH / CHART_HEIGHT so the viewBox never stretches
+     non-uniformly — keeps circle markers round and grid lines crisp. */
+  aspect-ratio: 800 / 420;
+  touch-action: pan-y;
+}
+
+.gridLine {
+  stroke: var(--weight-grid);
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+}
+
+.line {
+  stroke: var(--weight-line-color);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.latestGuide {
+  stroke: var(--weight-grid);
+  stroke-width: 1;
+}
+
+.hoverGuide {
+  stroke: var(--weight-muted);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+
+.latestDot {
+  fill: var(--weight-line-color);
+  stroke: var(--weight-bg);
+  stroke-width: 2;
+}
+
+.hoverDot {
+  fill: var(--weight-line-color);
+  stroke: var(--weight-bg);
+  stroke-width: 2;
+}
+
+.gridLabel {
+  position: absolute;
+  transform: translate(0, -100%);
+  font-size: 0.75rem;
+  color: var(--weight-muted);
+  white-space: nowrap;
+  pointer-events: none;
+  padding-bottom: 4px;
+}
+
+.axisLabel {
+  position: absolute;
+  bottom: 0;
+  font-size: 0.75rem;
+  color: var(--weight-muted);
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateX(0);
+}
+
+.axisLabelEnd {
+  transform: translateX(-100%);
+}
+
+.tooltip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 12px));
+  background: var(--weight-ink);
+  color: var(--weight-bg);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 6px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity 120ms ease-out;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.empty {
+  padding: 3rem 1rem;
+  text-align: center;
+  color: var(--weight-muted);
+}
