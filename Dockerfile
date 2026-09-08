@@ -7,6 +7,7 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
+ARG CALIFY_BASE_PATH=/calify
 RUN corepack enable && pnpm build
 
 FROM node:22-alpine AS runner
