@@ -17,7 +17,7 @@ function Step({ number, title, children }: { number: number; title: string; chil
 }
 function SetupDiagram() {
   return <Box component="figure" sx={{ m: 0, mt: 2, bgcolor: '#edf4f0', borderRadius: 2, p: 2 }}>
-    <svg viewBox="0 0 720 165" role="img" aria-labelledby="setup-title setup-desc"><title id="setup-title">Camera and reference placement</title><desc id="setup-desc">First capture a board at varied angles. Later, put a known reference near the subject's depth. A reference closer to the camera has a different scale.</desc>
+    <svg viewBox="0 0 720 165" role="img" aria-labelledby="setup-title setup-desc"><title id="setup-title">Camera and reference placement</title><desc id="setup-desc">First capture a board at varied angles. Later, put a known reference near the subject&apos;s depth. A reference closer to the camera has a different scale.</desc>
       <g fill="none" stroke="#216657" strokeWidth="2"><rect x="20" y="55" width="65" height="45" rx="8" /><circle cx="53" cy="77" r="13" /><path d="M95 77L290 30M95 77L290 125" strokeDasharray="5 5" /><path d="M248 35l35 8v72l-35 8zM302 33l36 -8v105l-36 -8z" /><path d="M409 80h60" /><circle cx="595" cy="37" r="14" /><path d="M595 51v60m-30-40h60m-30 40l-20 30m20-30l20 30" /><rect x="637" y="65" width="30" height="44" /><path d="M560 149h120" strokeDasharray="4 4" /></g>
       <g fill="#20332e" fontSize="13" fontFamily="Arial"><text x="14" y="145">Fixed camera</text><text x="215" y="152">1. Board: varied poses</text><text x="480" y="163">2. Reference near subject depth</text></g>
     </svg><Typography component="figcaption" variant="body2">Two separate steps: calibrate the camera, then check each capture’s reference and placement. Diagram is schematic.</Typography>

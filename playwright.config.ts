@@ -1,5 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
-const basePath = process.env.CALIFY_BASE_PATH ?? '/calify/pr-4';
+const basePath = process.env.CALIFY_BASE_PATH ?? '/calify-pr-5';
 export default defineConfig({
   testDir: './tests/browser',
   timeout: 240_000,

@@ -1,63 +1,48 @@
-# Issue #4 validation status
+# Issue #4 validation
 
-This is an uncommitted working-tree implementation. No branch, commit, push or PR
-was created, in accordance with the execution constraints. Issues/PRs #2 and #3
-were not modified or used as prerequisites.
+PR #5 was repaired after its first agent run added dependencies without updating
+the lockfile. The lockfile now matches package.json; frozen installation remains
+required. The lint error and browser-test selectors/navigation race were fixed.
+The worker-generated Git askpass helper was removed from the repository.
 
-## Passed in this environment
+## Verified on the Jetson
 
-- `node tests/local-data.test.ts`: four tests passed (dated weight upsert and
-  persistence; damaged storage/quota errors; profile/result validation; board metadata).
-- Python syntax compilation of engine, generator and synthetic test module.
-- Worker JavaScript syntax check.
+- Frozen pnpm 11.25.0 installation, lint, four local-data tests, and production
+  build pass. Installed Next.js docs were reviewed.
+- Three native OpenCV 4.11 tests pass: generated plate dimensions/detection,
+  rejection of unusable data, and synthetic camera recovery.
+- Desktop and mobile browser checks exercise weight persistence/editing,
+  navigation and refresh under `/calify-pr-5`, A4 SVG download, overflow checks,
+  and the real browser Pyodide/OpenCV calibration/save/reset workflow.
+- Calibration uses 12 synthetic 1280 × 960 images. Reprojection RMS is
+  **0.3275 pixels**. Recovered focal lengths are **1046.56 / 1026.10 pixels**,
+  compared with the known **1050 / 1030 pixels**. This tests the implementation,
+  not real-world body-measurement accuracy or general lens-distortion recovery.
+- The generated 210 × 297 mm A4 SVG is independently reconstructed and detected
+  in the native test; all 24 ChArUco corners are detected. Printing at actual size
+  and measuring the physical reference remain necessary.
 
-## Blocked, not passed
+## Reproduction
 
-The checkout has no `node_modules`, `pnpm`, `npm`, Python OpenCV or browser test
-installation. Shell requests to npm/PyPI fail DNS resolution. Dependency installation
-was attempted and failed. Consequently:
+Use the README's native Python environment setup, then:
 
-- **The existing pnpm lockfile needs regeneration** with `pnpm install` after the
-  added MUI/Emotion and Playwright dependencies. It is intentionally not hand-edited
-  or represented as verified. The current frozen-lockfile Docker install will fail
-  until this is done. This patch is not ready for merge before resolving it.
-- Lint, TypeScript/Next production build, browser route/navigation tests and
-  desktop/mobile screenshots could not run.
-- Native OpenCV tests failed at import (`ModuleNotFoundError: cv2`). No successful
-  calibration or generated downloadable-plate detection has been observed here.
-- Browser Pyodide/ChArUco API compatibility, runtime download, exact SVG download
-  rendering and the synthetic camera recovery test still require execution.
-- No screenshot or numerical calibration result is claimed or fabricated.
+```bash
+pnpm install --frozen-lockfile
+pnpm lint
+pnpm test
+CALIFY_BASE_PATH=/calify-pr-5 pnpm build
+CALIFY_TEST_ARTIFACTS=/tmp/calify-validation pnpm test:calibration
+CALIFY_TEST_ARTIFACTS=/tmp/calify-validation CALIFY_BASE_PATH=/calify-pr-5 pnpm test:browser --workers=1
+```
 
-`AGENTS.md` requires installed Next documentation. The required directory was
-absent and installation was unavailable. Official online Next documentation for
-16.3.4 was consulted as a fallback, alongside MUI's official Next integration
-and the linked OpenCV references. Read the installed documentation and rerun
-validation once dependencies are available.
+The Python environment must be activated for `test:calibration`. Browser tests
+require the Playwright Chromium installation. Screenshots and the numerical
+result are included in [validation artifacts](validation/).
 
-## Concrete implementation choice and limits
+## Remaining product limits
 
-A browser worker plus Pyodide/OpenCV provides a real solver without a photo-upload
-backend. The SVG is generated on demand, so a runtime failure also disables its
-download instead of serving an unverified target. Runtime packages come from a
-pinned public CDN distribution; network/offline packaging and device memory need
-review before production use. The browser runtime is 4.11, while the requested
-explanatory tutorials are 4.13. Native and browser replay tests exercise the APIs
-actually selected; these tests must pass before acceptance.
-
-The included dataset generator creates images from known intrinsics. Its outputs
-are synthetic validation, not a real-world body-measurement study. The interface
-explicitly makes no such accuracy claim. No manual scale substitute is used.
-
-## References consulted
-
-- [MUI Next.js integration](https://mui.com/material-ui/integrations/nextjs/):
-  App Router cache provider and client theme boundaries.
-- [Next basePath](https://nextjs.org/docs/app/api-reference/config/next-config-js/basePath):
-  build-time routing prefix and asset handling.
-- [Next server/client components](https://nextjs.org/docs/app/getting-started/server-and-client-components)
-  and [layouts/pages](https://nextjs.org/docs/app/getting-started/layouts-and-pages).
-- [OpenCV ChArUco calibration](https://docs.opencv.org/4.13.0/da/d13/tutorial_aruco_calibration.html)
-  and [board detection](https://docs.opencv.org/4.13.0/df/d4a/tutorial_charuco_detection.html).
-- [OpenCV camera model](https://docs.opencv.org/4.11.0/d9/d0c/group__calib3d.html)
-  and [Pyodide 0.28.3 packages](https://pyodide.org/en/0.28.3/usage/packages-in-pyodide.html).
+Runtime assets are downloaded from the pinned Pyodide CDN; first-use calibration
+needs internet access. Photos stay in the browser. Native and browser tests use
+OpenCV 4.11, while the explanatory links cover OpenCV 4.13. The synthetic dataset
+is not a real-world repeatability study. Calibration does not automatically apply
+body measurements to Main photos, and no medical/body-fat accuracy is claimed.

@@ -7,20 +7,23 @@ test('navigation, local weight persistence, downloads and screenshots', async ({
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('./');
   await expect(page.getByRole('heading', { name: 'Main', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Front view' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Side view' })).toBeVisible();
-  await page.getByLabel('Date', { exact: true }).fill('2026-09-08');
-  await page.getByLabel('Weight (kg)', { exact: true }).fill('75.2');
+  await expect(page.getByRole('heading', { name: 'Front view', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Side view', exact: true })).toBeVisible();
+  await page.getByLabel(/^Date/).fill('2026-09-08');
+  await page.getByLabel(/^Weight \(kg\)/).fill('75.2');
   await page.getByRole('button', { name: 'Save entry' }).click();
   await page.reload();
   await expect(page.getByRole('cell', { name: '75.2', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Edit weight 2026-09-08' }).click();
-  await page.getByLabel('Weight (kg)', { exact: true }).fill('75.5');
+  await page.getByLabel(/^Weight \(kg\)/).fill('75.5');
   await page.getByRole('button', { name: 'Save entry' }).click();
   await expect(page.getByRole('cell', { name: '75.5', exact: true })).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: testInfo.outputPath('main.png'), fullPage: true });
   if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click();
   await page.getByRole('link', { name: 'Calibration', exact: true }).click();
+  await expect(page).toHaveURL(/\/calibration$/);
+  await expect(page.getByRole('heading', { name: 'Calibration', exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Calibration', exact: true })).toBeVisible();
   // Same-origin static files must retain the PR prefix.
@@ -36,6 +39,7 @@ test('navigation, local weight persistence, downloads and screenshots', async ({
   expect(download.suggestedFilename()).toBe('calify-charuco-v1-a4.svg');
   await download.saveAs(testInfo.outputPath('plate.svg'));
   await expect(page.getByText(/detected all 24 corners/)).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: testInfo.outputPath('calibration.png'), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
   if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click();
