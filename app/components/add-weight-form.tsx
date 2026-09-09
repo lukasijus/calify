@@ -21,7 +21,7 @@ export function AddWeightForm({ onAdd, onClose }: AddWeightFormProps) {
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
-    const parsed = Number.parseFloat(kg.replace(",", "."));
+    const parsed = Number.parseFloat(kg.replace(",", ".").trim());
     if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 700) {
       setError("Enter a weight in kg");
       return;
@@ -41,14 +41,21 @@ export function AddWeightForm({ onAdd, onClose }: AddWeightFormProps) {
           <span>Weight (kg)</span>
           <input
             ref={kgInputRef}
-            type="number"
+            // `type="text"` (not `number`) so mobile keyboards that emit a
+            // locale decimal separator like "," aren't silently swallowed —
+            // "95,6" must survive to `handleSubmit`, which normalizes it.
+            type="text"
             inputMode="decimal"
-            step="0.1"
-            min="0"
+            enterKeyHint="done"
+            autoComplete="off"
+            pattern="[0-9]*[.,]?[0-9]*"
             placeholder="95.7"
             value={kg}
             onChange={(event) => {
-              setKg(event.target.value);
+              const next = event.target.value
+                .replace(/[^0-9.,]/g, "")
+                .replace(/([.,])(?=.*[.,])/g, "");
+              setKg(next);
               setError(null);
             }}
           />
