@@ -1,8 +1,9 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { formatDayMonth, type WeightEntry } from "../lib/weight";
+import { smoothPath, nearestPoint, dateLabels } from "../lib/weight-chart";
 
 type TrendPoint = { at: string; kg: number };
 
@@ -17,8 +18,8 @@ type WeightChartProps = {
   trend?: TrendPoint[];
 };
 
-const ACCENT = "#2f6bff";
-const PADDING = { top: 20, right: 16, bottom: 28, left: 44 } as const;
+const ACCENT = "var(--wc-accent)";
+const PADDING = { top: 68, right: 16, bottom: 28, left: 48 } as const;
 
 function formatKg(kg: number): string {
   return kg.toFixed(1);
@@ -49,25 +50,6 @@ function niceScale(min: number, max: number, maxTicks = 5) {
   return { min: niceMin, max: niceMax, step, ticks };
 }
 
-/** Catmull-Rom spline → cubic bezier path. `tension` closer to 0 hugs points. */
-function smoothPath(points: ReadonlyArray<{ x: number; y: number }>, tension = 0.2): string {
-  if (points.length === 0) return "";
-  if (points.length === 1) return `M${points[0].x},${points[0].y}`;
-  let d = `M${points[0].x},${points[0].y}`;
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[i - 1] ?? points[i];
-    const p1 = points[i];
-    const p2 = points[i + 1];
-    const p3 = points[i + 2] ?? p2;
-    const c1x = p1.x + (p2.x - p0.x) * tension;
-    const c1y = p1.y + (p2.y - p0.y) * tension;
-    const c2x = p2.x - (p3.x - p1.x) * tension;
-    const c2y = p2.y - (p3.y - p1.y) * tension;
-    d += ` C${c1x.toFixed(2)},${c1y.toFixed(2)} ${c2x.toFixed(2)},${c2y.toFixed(2)} ${p2.x.toFixed(2)},${p2.y.toFixed(2)}`;
-  }
-  return d;
-}
-
 function useContainerWidth() {
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -85,15 +67,15 @@ function useContainerWidth() {
 
 export function WeightChart({ entries, trend }: WeightChartProps) {
   const [containerRef, width] = useContainerWidth();
-  const tooltipRef = useRef<HTMLDivElement>(null);
-  const [hover, setHover] = useState<{ index: number; pointerY: number } | null>(null);
-  const [tooltipSize, setTooltipSize] = useState({ w: 150, h: 56 });
+  const gradientId = useId();
+  const [selection, setSelection] = useState<{ entries: WeightEntry[]; index: number } | null>(null);
+  const gesture = useRef<{ pointerId: number; index: number | null; lastHaptic: number } | null>(null);
 
   const height =
     width === 0
       ? 300
       : width < 480
-        ? Math.round(width * 0.82)
+        ? Math.max(260, Math.round(width * 0.82))
         : Math.round(Math.min(width * 0.46, 420));
 
   const layout = useMemo(
@@ -112,7 +94,7 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
     const times = entries.map((e) => Date.parse(e.at));
     const minTime = Math.min(...times);
     const maxTime = Math.max(...times);
-    const timeSpan = maxTime - minTime || 1;
+    const timeSpan = maxTime - minTime;
 
     const values = entries.map((e) => e.kg);
     const dataMin = Math.min(...values);
@@ -121,7 +103,7 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
     const scale = niceScale(dataMin - valuePad, dataMax + valuePad, 5);
 
     const xFor = (time: number) =>
-      entries.length === 1
+      timeSpan === 0
         ? (layout.left + layout.right) / 2
         : layout.left + ((time - minTime) / timeSpan) * (layout.right - layout.left);
     const yFor = (kg: number) =>
@@ -140,24 +122,11 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
             .map((p) => ({ x: xFor(Date.parse(p.at)), y: yFor(p.kg) }))
         : [];
 
-    // Sparse, non-overlapping x labels: first + last + evenly spaced middles.
-    const maxLabels = width < 380 ? 3 : width < 560 ? 4 : 6;
-    const labelIndexes: number[] = [];
-    if (points.length <= maxLabels) {
-      for (let i = 0; i < points.length; i++) labelIndexes.push(i);
-    } else {
-      for (let i = 0; i < maxLabels; i++) {
-        labelIndexes.push(Math.round((i * (points.length - 1)) / (maxLabels - 1)));
-      }
-    }
-    const xLabels = labelIndexes
-      .filter((value, i, arr) => arr.indexOf(value) === i)
-      .map((index) => ({
-        index,
-        x: points[index].x,
-        text: formatDayMonth(new Date(points[index].entry.at)),
-      }))
-      .filter((label, i, arr) => i === 0 || label.text !== arr[i - 1].text);
+    const xLabels = dateLabels(points.map((point, index) => ({
+      index,
+      x: point.x,
+      text: formatDayMonth(new Date(point.entry.at)),
+    })));
 
     const tickDecimals = scale.step < 1 ? 1 : 0;
 
@@ -166,69 +135,86 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
       latest: points[points.length - 1],
       trendPoints,
       ticks: scale.ticks.filter((t) => t >= scale.min - 1e-9 && t <= scale.max + 1e-9),
-      formatTick: (t: number) => `${t.toFixed(tickDecimals)}kg`,
+      formatTick: (t: number) => t.toFixed(tickDecimals),
       yFor,
       xLabels,
       linePath: smoothPath(points),
     };
   }, [entries, trend, width, layout]);
 
-  useLayoutEffect(() => {
-    if (!tooltipRef.current) return;
-    const rect = tooltipRef.current.getBoundingClientRect();
-    setTooltipSize((prev) =>
-      Math.abs(prev.w - rect.width) > 1 || Math.abs(prev.h - rect.height) > 1
-        ? { w: rect.width, h: rect.height }
-        : prev,
-    );
-  }, [hover]);
-
-  const handlePointer = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!model) return;
+  const selectPointer = (event: ReactPointerEvent<HTMLDivElement>, sliding = false) => {
+    if (!model || !event.isPrimary) return;
     const rect = event.currentTarget.getBoundingClientRect();
-    const px = event.clientX - rect.left;
-    const py = event.clientY - rect.top;
-    if (px < layout.left - 12 || px > layout.right + 12) {
-      setHover(null);
-      return;
-    }
-    let nearest = 0;
-    let best = Infinity;
-    model.points.forEach((point, index) => {
-      const distance = Math.abs(point.x - px);
-      if (distance < best) {
-        best = distance;
-        nearest = index;
+    const px = (event.clientX - rect.left) * width / rect.width;
+    const index = nearestPoint(model.points, px);
+    const drag = gesture.current;
+    if (sliding && drag && drag.index !== index) {
+      const now = performance.now();
+      if (drag.index !== null && event.pointerType !== "mouse" && now - drag.lastHaptic >= 45) {
+        // Haptics are optional, including when browser permissions reject them.
+        try {
+          if (typeof navigator.vibrate === "function" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+            navigator.vibrate(5);
+          }
+        } catch { /* Unsupported or blocked: selection still works. */ }
+        drag.lastHaptic = now;
       }
-    });
-    setHover({ index: nearest, pointerY: py });
+      drag.index = index;
+    }
+    setSelection((previous) => previous?.entries === entries && previous.index === index
+      ? previous : { entries, index });
   };
 
-  const clearHover = () => setHover(null);
+  const endGesture = (event: ReactPointerEvent<HTMLDivElement>, cancelled = false) => {
+    if (gesture.current?.pointerId !== event.pointerId) return;
+    gesture.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (cancelled) setSelection(null);
+  };
 
-  const active = hover && model ? model.points[hover.index] : null;
-  const latest = model ? model.latest : null;
-
-  let tooltipLeft = 0;
-  let tooltipTop = 0;
-  if (active && hover) {
-    const gap = 14;
-    tooltipLeft = active.x + gap;
-    if (tooltipLeft + tooltipSize.w > width - 4) tooltipLeft = active.x - gap - tooltipSize.w;
-    tooltipLeft = Math.max(4, tooltipLeft);
-    tooltipTop = hover.pointerY - tooltipSize.h - gap;
-    if (tooltipTop < 4) tooltipTop = hover.pointerY + gap;
-    tooltipTop = Math.min(tooltipTop, height - tooltipSize.h - 4);
-  }
+  const active = selection?.entries === entries && model ? model.points[selection.index] : null;
+  const latest = model?.latest;
+  const tooltipLeft = active ? Math.max(4, Math.min(active.x - 48, width - 100)) : 0;
 
   return (
     <div
       ref={containerRef}
       className={`wc-chart${entries.length === 0 ? " wc-chart-empty" : ""}`}
-      onPointerMove={handlePointer}
-      onPointerDown={handlePointer}
-      onPointerLeave={clearHover}
-      onPointerCancel={clearHover}
+      role={model ? "slider" : undefined}
+      tabIndex={model ? 0 : undefined}
+      aria-label={model ? "Weight history. Use arrow keys to select a weigh-in." : undefined}
+      aria-valuemin={model ? 1 : undefined}
+      aria-valuemax={model?.points.length}
+      aria-valuenow={model ? (active ? selection!.index + 1 : model.points.length) : undefined}
+      aria-valuetext={latest ? `${formatDayMonth(new Date((active ?? latest).entry.at))}, ${formatKg((active ?? latest).entry.kg)} kg` : undefined}
+      onKeyDown={(event) => {
+        if (!model) return;
+        const current = active ? selection!.index : model.points.length - 1;
+        const index = event.key === "Home" ? 0 : event.key === "End" ? model.points.length - 1
+          : event.key === "ArrowLeft" || event.key === "ArrowDown" ? Math.max(0, current - 1)
+          : event.key === "ArrowRight" || event.key === "ArrowUp" ? Math.min(model.points.length - 1, current + 1) : null;
+        if (index !== null) {
+          event.preventDefault();
+          setSelection({ entries, index });
+        } else if (event.key === "Escape") setSelection(null);
+      }}
+      onPointerDown={(event) => {
+        if (!model || !event.isPrimary || event.button !== 0) return;
+        gesture.current = { pointerId: event.pointerId, index: null, lastHaptic: -Infinity };
+        event.currentTarget.setPointerCapture(event.pointerId);
+        selectPointer(event, true);
+      }}
+      onPointerMove={(event) => {
+        if (gesture.current?.pointerId === event.pointerId) selectPointer(event, true);
+        else if (!gesture.current && event.pointerType === "mouse") selectPointer(event);
+      }}
+      onPointerUp={(event) => endGesture(event)}
+      onPointerLeave={() => { if (!gesture.current) setSelection(null); }}
+      onPointerCancel={(event) => endGesture(event, true)}
+      onLostPointerCapture={() => { gesture.current = null; }}
+      onBlur={() => setSelection(null)}
     >
       {entries.length === 0 && <p>No weigh-ins yet. Add your first entry to start the graph.</p>}
       {width > 0 && model && (
@@ -240,8 +226,8 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
           aria-label={`Weight history chart, latest ${formatKg(model.latest.entry.kg)} kilograms`}
         >
           <defs>
-            <linearGradient id="wc-area" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={ACCENT} stopOpacity={0.16} />
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={ACCENT} stopOpacity={0.08} />
               <stop offset="100%" stopColor={ACCENT} stopOpacity={0} />
             </linearGradient>
           </defs>
@@ -256,9 +242,8 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
                   x2={layout.right}
                   y1={y}
                   y2={y}
-                  stroke="#ececf0"
+                  stroke="var(--wc-grid)"
                   strokeWidth={1}
-                  strokeDasharray="4 7"
                 />
                 <text
                   x={layout.left - 10}
@@ -274,12 +259,12 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
           })}
 
           {/* x labels */}
-          {model.xLabels.map((label, i) => (
+          {model.xLabels.map((label) => (
             <text
               key={`${label.text}-${label.index}`}
               x={label.x}
               y={height - 8}
-              textAnchor={i === 0 ? "start" : i === model.xLabels.length - 1 ? "end" : "middle"}
+              textAnchor={label.anchor}
               className="wc-axis-label"
             >
               {label.text}
@@ -289,8 +274,8 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
           {/* area + line */}
           {model.points.length > 1 && (
             <path
-              d={`${model.linePath} L${layout.right},${layout.bottom} L${model.points[0].x},${layout.bottom} Z`}
-              fill="url(#wc-area)"
+              d={`${model.linePath} L${model.latest.x},${layout.bottom} L${model.points[0].x},${layout.bottom} Z`}
+              fill={`url(#${gradientId})`}
             />
           )}
           {model.trendPoints.length > 1 && (
@@ -307,32 +292,16 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
             d={model.linePath}
             fill="none"
             stroke={ACCENT}
-            strokeWidth={2.25}
+            strokeWidth={1.8}
             strokeLinecap="round"
             strokeLinejoin="round"
           />
 
-          {/* latest value marker + quiet guide (hidden while scrubbing) */}
-          {latest && !active && (
+          {/* Keep the latest weigh-in identifiable while exploring older points. */}
+          {latest && active !== latest && (
             <>
-              <line
-                x1={latest.x}
-                x2={latest.x}
-                y1={layout.top}
-                y2={layout.bottom}
-                stroke="#ececf0"
-                strokeWidth={1}
-              />
-              <text
-                x={Math.min(latest.x, layout.right)}
-                y={layout.top - 7}
-                textAnchor="end"
-                className="wc-axis-label"
-              >
-                {formatDayMonth(new Date(latest.entry.at))}
-              </text>
-              <circle cx={latest.x} cy={latest.y} r={8} fill={ACCENT} fillOpacity={0.14} />
-              <circle cx={latest.x} cy={latest.y} r={4} fill={ACCENT} stroke="#fff" strokeWidth={2} />
+              {!active && <circle cx={latest.x} cy={latest.y} r={8} fill={ACCENT} fillOpacity={0.12} />}
+              <circle cx={latest.x} cy={latest.y} r={3.5} fill={ACCENT} stroke="var(--wc-surface)" strokeWidth={1.5} />
             </>
           )}
 
@@ -344,29 +313,23 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
                 x2={active.x}
                 y1={layout.top}
                 y2={layout.bottom}
-                stroke="#c7c7d1"
+                stroke="var(--wc-guide)"
                 strokeWidth={1}
-                strokeDasharray="3 4"
               />
               <circle cx={active.x} cy={active.y} r={9} fill={ACCENT} fillOpacity={0.14} />
-              <circle cx={active.x} cy={active.y} r={4.5} fill={ACCENT} stroke="#fff" strokeWidth={2.5} />
+              <circle cx={active.x} cy={active.y} r={4.5} fill={ACCENT} stroke="var(--wc-surface)" strokeWidth={2.5} />
             </>
           )}
         </svg>
       )}
 
-      {active && hover && (
+      {active && (
         <div
-          ref={tooltipRef}
           className="wc-tooltip"
-          style={{ left: `${tooltipLeft}px`, top: `${tooltipTop}px` }}
+          style={{ left: tooltipLeft, top: 8 }}
         >
           <div className="wc-tooltip-date">{formatDayMonth(new Date(active.entry.at))}</div>
-          <div className="wc-tooltip-row">
-            <span className="wc-tooltip-dot" />
-            <span className="wc-tooltip-label">Weight</span>
-            <span className="wc-tooltip-value">{formatKg(active.entry.kg)} kg</span>
-          </div>
+          <div className="wc-tooltip-value">{formatKg(active.entry.kg)} kg</div>
         </div>
       )}
     </div>

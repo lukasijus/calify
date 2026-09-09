@@ -221,10 +221,21 @@ main {
 /* ---- Chart ---- */
 
 .wc-chart {
+  --wc-surface: #fff;
+  --wc-text: #202028;
+  --wc-muted: #777782;
+  --wc-grid: #eeeef2;
+  --wc-guide: #bfc2cc;
+  --wc-accent: #2f6bff;
+  background: var(--wc-surface);
+  color: var(--wc-text);
+  border-radius: 12px;
+  user-select: none;
+  -webkit-user-select: none;
   position: relative;
   width: 100%;
   margin-top: 8px;
-  touch-action: pan-y;
+  touch-action: pan-y pinch-zoom;
 }
 
 .wc-chart svg {
@@ -244,7 +255,7 @@ main {
 }
 
 .wc-axis-label {
-  fill: #a9a9b3;
+  fill: var(--wc-muted);
   font-size: 12px;
   font-weight: 400;
 }
@@ -255,45 +266,40 @@ main {
   position: absolute;
   z-index: 2;
   pointer-events: none;
-  padding: 9px 12px;
-  min-width: 132px;
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: var(--shadow-lg);
-  transition: left 0.06s linear, top 0.06s linear;
+  width: 96px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--wc-surface);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .wc-tooltip-date {
-  font-size: 0.86rem;
-  font-weight: 600;
-  color: var(--fg);
-}
-
-.wc-tooltip-row {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-top: 4px;
-  font-size: 0.85rem;
-}
-
-.wc-tooltip-dot {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
-.wc-tooltip-label {
-  color: var(--muted);
+  font-size: 0.75rem;
+  color: var(--wc-muted);
 }
 
 .wc-tooltip-value {
-  margin-left: auto;
-  padding-left: 12px;
+  margin-top: 2px;
+  font-size: 0.9rem;
   font-weight: 600;
-  color: var(--fg);
+  color: var(--wc-text);
+}
+
+.wc-chart:focus-visible {
+  outline: 2px solid var(--wc-accent);
+  outline-offset: 4px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .wc-chart {
+    --wc-surface: #101012;
+    --wc-text: #f0f0f4;
+    --wc-muted: #a0a0ab;
+    --wc-grid: #242429;
+    --wc-guide: #656571;
+    --wc-accent: #6795ff;
+  }
 }
 
 @media (max-width: 480px) {
