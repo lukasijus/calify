@@ -1,7 +1,9 @@
+import { WeightScreen } from "./components/weight-screen";
+
 export default function Home() {
   return (
     <main>
-      <h1>CALIFY, local calorie and body tracker</h1>
+      <WeightScreen />
     </main>
   );
 }
