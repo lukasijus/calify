@@ -208,7 +208,6 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
 
   const active = hover && model ? model.points[hover.index] : null;
   const latest = model ? model.latest : null;
-  const showAllMarkers = model ? model.points.length <= 16 : false;
 
   let tooltipLeft = 0;
   let tooltipTop = 0;
@@ -312,19 +311,6 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-
-          {showAllMarkers &&
-            model.points.map((point) => (
-              <circle
-                key={point.entry.id}
-                cx={point.x}
-                cy={point.y}
-                r={2.6}
-                fill="#fff"
-                stroke={ACCENT}
-                strokeWidth={1.5}
-              />
-            ))}
 
           {/* latest value marker + quiet guide (hidden while scrubbing) */}
           {latest && !active && (
