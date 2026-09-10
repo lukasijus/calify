@@ -29,8 +29,15 @@ jobs:
 
       - name: Reload shared gateway for the new container IP
         run: |
-          docker exec jetson-app-gateway nginx -t
-          docker exec jetson-app-gateway nginx -s reload
+          # nginx -t validates the whole gateway config, including the preview
+          # routes in previews.conf which this deploy does not own. An unrelated
+          # stale preview upstream must not fail the main deploy — the Verify
+          # step below is the real gate on whether /calify is being served.
+          if docker exec jetson-app-gateway nginx -t; then
+            docker exec jetson-app-gateway nginx -s reload
+          else
+            echo "::warning::gateway nginx -t failed (likely an unrelated preview route); skipping reload"
+          fi
 
       - name: Verify Calify main preview
         run: |
