@@ -21,8 +21,11 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Start the database
+        run: docker compose -f compose.yaml up -d --wait db
+
       - name: Build and restart Calify main
-        run: docker compose -f compose.yaml up -d --build --force-recreate calify
+        run: docker compose -f compose.yaml up -d --build --force-recreate --no-deps calify
 
       - name: Reload shared gateway for the new container IP
         run: |
@@ -36,7 +39,17 @@ jobs:
               break
             fi
             if test "$attempt" = 30; then
-              docker compose -f compose.yaml logs --no-color --tail=100 calify
+              docker compose -f compose.yaml logs --no-color --tail=100 calify db
+              exit 1
+            fi
+            sleep 2
+          done
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error http://127.0.0.1:8092/calify/api/weights | grep -q '"entries"'; then
+              break
+            fi
+            if test "$attempt" = 30; then
+              docker compose -f compose.yaml logs --no-color --tail=100 calify db
               exit 1
             fi
             sleep 2

@@ -1,51 +1,71 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   createEntry,
   filterByPeriod,
-  isStoreInitialized,
-  loadEntries,
   PERIODS,
-  saveEntries,
   sortByTime,
   formatDayMonth,
   type Period,
   type WeightEntry,
 } from "../lib/weight";
-import { buildSeedEntries } from "../lib/weight-seed";
 import { AddWeightForm } from "./add-weight-form";
 import { WeightChart } from "./weight-chart";
+
+const API = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/weights`;
 
 export function WeightScreen() {
   const [entries, setEntries] = useState<WeightEntry[]>([]);
   const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState<Period>("All");
   const [showForm, setShowForm] = useState(false);
 
-  // Load persisted entries once, seeding the historical import on first run.
   useEffect(() => {
-    if (isStoreInitialized()) {
-      setEntries(sortByTime(loadEntries()));
-    } else {
-      const seeded = sortByTime(buildSeedEntries());
-      saveEntries(seeded);
-      setEntries(seeded);
-    }
-    setReady(true);
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const response = await fetch(API, { cache: "no-store", signal: controller.signal });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = (await response.json()) as { entries: WeightEntry[] };
+        setEntries(sortByTime(data.entries));
+        setError(null);
+      } catch (cause) {
+        if (controller.signal.aborted) return;
+        console.error("failed to load weight history", cause);
+        setError("Couldn't load your weight history. Refresh to try again.");
+      } finally {
+        if (!controller.signal.aborted) setReady(true);
+      }
+    })();
+    return () => controller.abort();
   }, []);
 
-  const persist = (next: WeightEntry[]) => {
-    const sorted = sortByTime(next);
-    setEntries(sorted);
-    saveEntries(sorted);
-  };
-
-  const handleAdd = (kg: number, at: Date) => {
-    persist([...entries, createEntry(kg, at)]);
-    setShowForm(false);
-    setPeriod("All");
-  };
+  const handleAdd = useCallback(
+    async (kg: number, at: Date) => {
+      const optimistic = createEntry(kg, at);
+      setEntries((prev) => sortByTime([...prev, optimistic]));
+      setShowForm(false);
+      setPeriod("All");
+      setError(null);
+      try {
+        const response = await fetch(API, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ kg: optimistic.kg, at: optimistic.at }),
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const { entry } = (await response.json()) as { entry: WeightEntry };
+        setEntries((prev) => sortByTime(prev.map((item) => (item.id === optimistic.id ? entry : item))));
+      } catch (cause) {
+        console.error("failed to save weigh-in", cause);
+        setEntries((prev) => prev.filter((item) => item.id !== optimistic.id));
+        setError("Couldn't save that weigh-in. Try again.");
+      }
+    },
+    [],
+  );
 
   const visible = useMemo(() => filterByPeriod(entries, period), [entries, period]);
 
@@ -92,6 +112,12 @@ export function WeightScreen() {
       </header>
 
       {showForm && <AddWeightForm onAdd={handleAdd} onClose={() => setShowForm(false)} />}
+
+      {error && (
+        <p className="wc-form-error" role="alert">
+          {error}
+        </p>
+      )}
 
       <div className="wc-periods" role="group" aria-label="Time range">
         {PERIODS.map((option) => (

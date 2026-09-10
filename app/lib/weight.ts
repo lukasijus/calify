@@ -1,12 +1,11 @@
 /**
- * Weight tracking data model + persistence.
+ * Weight tracking data model + client-side helpers.
  *
- * Storage is intentionally simple: a single JSON array in `localStorage`.
- * The shape is kept deliberately small so we can extend it later (goal weight,
- * milestones, a 7-day moving-average trend line, ...) without a migration.
+ * Entries are persisted server-side in Postgres (see `app/lib/db.ts` and the
+ * `/api/weights` route). This module holds the shared shape and the pure
+ * math/formatting the chart needs. The shape is kept deliberately small so it
+ * can grow later (goal weight, milestones, ...) without a migration.
  */
-
-export const STORAGE_KEY = "calify.weight.v1";
 
 export type WeightSource = "manual" | "import";
 
@@ -26,59 +25,6 @@ export type WeightEntry = {
   at: string;
   source: WeightSource;
 };
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
-function isValidEntry(value: unknown): value is WeightEntry {
-  if (!value || typeof value !== "object") return false;
-  const entry = value as Record<string, unknown>;
-  return (
-    typeof entry.id === "string" &&
-    isFiniteNumber(entry.kg) &&
-    entry.kg > 0 &&
-    typeof entry.at === "string" &&
-    !Number.isNaN(Date.parse(entry.at))
-  );
-}
-
-export function loadEntries(): WeightEntry[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isValidEntry).map((entry) => ({
-      id: entry.id,
-      kg: entry.kg,
-      at: entry.at,
-      source: entry.source === "import" ? "import" : "manual",
-    }));
-  } catch {
-    return [];
-  }
-}
-
-export function saveEntries(entries: WeightEntry[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-  } catch {
-    /* storage full / disabled — nothing useful to do in an MVP */
-  }
-}
-
-/** Whether the store has ever been initialized (so we don't re-seed after a wipe). */
-export function isStoreInitialized(): boolean {
-  if (typeof window === "undefined") return true;
-  try {
-    return window.localStorage.getItem(STORAGE_KEY) !== null;
-  } catch {
-    return true;
-  }
-}
 
 export function sortByTime(entries: readonly WeightEntry[]): WeightEntry[] {
   return [...entries].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));

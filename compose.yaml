@@ -4,6 +4,43 @@ services:
       context: .
     container_name: calify
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://calify@db:5432/calify
+    networks:
+      - default
+      - data
     ports:
       - "127.0.0.1:8092:80"
 
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: calify
+      POSTGRES_USER: calify
+      # The database is only reachable from the app container on the private
+      # `data` network (no published ports), so it trusts that network.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U calify -d calify"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - data
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+networks:
+  # `default` is the per-project network the shared gateway attaches to for the
+  # main deployment; the per-PR preview override also adds the external
+  # `calify_default`. `data` stays project-local so each preview gets its own
+  # isolated Postgres and can never resolve `db` to the production instance.
+  data:
+
+volumes:
+  pgdata:
