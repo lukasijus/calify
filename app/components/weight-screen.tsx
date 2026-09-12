@@ -10,6 +10,8 @@ import {
   type Period,
   type WeightEntry,
 } from "../lib/weight";
+import { AddCaloriesForm } from "./add-calories-form";
+import type { CalorieEntry } from "../lib/calorie";
 import { AddWeightForm } from "./add-weight-form";
 import { WeightChart } from "./weight-chart";
 
@@ -17,6 +19,9 @@ const API = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/weights`;
 
 export function WeightScreen() {
   const [entries, setEntries] = useState<WeightEntry[]>([]);
+  const [calories, setCalories] = useState<CalorieEntry[]>([]);
+  const [showCaloriesForm, setShowCaloriesForm] = useState(false);
+  const [calorieError, setCalorieError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState<Period>("All");
@@ -37,6 +42,16 @@ export function WeightScreen() {
         setError("Couldn't load your weight history. Refresh to try again.");
       } finally {
         if (!controller.signal.aborted) setReady(true);
+      }
+    })();
+    (async () => {
+      try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/calories`, { cache: "no-store", signal: controller.signal });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json() as { entries: CalorieEntry[] };
+        setCalories(sortByTime(data.entries));
+      } catch {
+        if (!controller.signal.aborted) setCalorieError("Couldn't load calorie history. Refresh to try again.");
       }
     })();
     return () => controller.abort();
@@ -67,7 +82,9 @@ export function WeightScreen() {
     [],
   );
 
-  const visible = useMemo(() => filterByPeriod(entries, period), [entries, period]);
+  const anchor = [...entries, ...calories].map((entry) => entry.at).sort().at(-1);
+  const visible = useMemo(() => filterByPeriod(entries, period, anchor), [entries, period, anchor]);
+  const visibleCalories = useMemo(() => filterByPeriod(calories, period, anchor), [calories, period, anchor]);
 
   const stats = useMemo(() => {
     if (entries.length === 0) return null;
@@ -102,6 +119,7 @@ export function WeightScreen() {
             </p>
           )}
         </div>
+        <div className="wc-add-actions">
         <button
           type="button"
           className="wc-btn wc-btn-primary wc-add"
@@ -109,10 +127,18 @@ export function WeightScreen() {
         >
           {showForm ? "Close" : "＋ Add weight"}
         </button>
+        <button type="button" className="wc-btn wc-btn-primary" onClick={() => setShowCaloriesForm(true)}>＋ Add calories</button>
+        </div>
       </header>
 
       {showForm && <AddWeightForm onAdd={handleAdd} onClose={() => setShowForm(false)} />}
 
+      {showCaloriesForm && <AddCaloriesForm onClose={() => setShowCaloriesForm(false)} onAdd={(entry) => {
+        setCalories((prev) => sortByTime([...prev, entry]));
+        setShowCaloriesForm(false);
+        setPeriod("All");
+      }} />}
+      {calorieError && <p className="wc-form-error" role="alert">{calorieError}</p>}
       {error && (
         <p className="wc-form-error" role="alert">
           {error}
@@ -134,7 +160,7 @@ export function WeightScreen() {
       </div>
 
       {ready ? (
-        <WeightChart entries={visible} />
+        <WeightChart entries={visible} calories={visibleCalories} />
       ) : (
         <div className="wc-chart wc-chart-empty" aria-hidden />
       )}
