@@ -63,6 +63,20 @@ async function runBootstrap(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       )
     `);
+    // The image size cap (8 MB, see `MAX_CALORIE_IMAGE_BYTES` in
+    // `app/lib/calorie.ts`) is re-asserted here so a bug in the route handler
+    // can't silently bloat the database.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS calorie_entries (
+        id         TEXT PRIMARY KEY,
+        kcal       INTEGER NOT NULL CHECK (kcal > 0 AND kcal <= 20000),
+        at         TEXT NOT NULL,
+        source     TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual')),
+        image_mime TEXT CHECK (image_mime IN ('image/jpeg', 'image/png', 'image/webp')),
+        image_data BYTEA CHECK (image_data IS NULL OR octet_length(image_data) <= 8388608),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
     await seedHistorical(client);
   } finally {
     client.release();

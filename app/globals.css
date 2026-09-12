@@ -126,12 +126,19 @@ main {
   background: #f5f5f7;
 }
 
+.wc-header-actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .wc-add {
   flex: none;
   white-space: nowrap;
 }
 
-/* ---- Add weight form ---- */
+/* ---- Add weight / calorie forms ---- */
 
 .wc-form {
   margin-top: 18px;
@@ -172,6 +179,15 @@ main {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
   border-color: transparent;
+}
+
+.wc-field input[type="file"] {
+  padding: 8px;
+  font-size: 0.85rem;
+}
+
+.wc-field-wide {
+  flex-basis: 100%;
 }
 
 .wc-form-error {
@@ -220,6 +236,35 @@ main {
 
 /* ---- Chart ---- */
 
+.wc-chart-wrap {
+  margin-top: 8px;
+}
+
+.wc-legend {
+  display: flex;
+  gap: 16px;
+}
+
+.wc-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.wc-legend-item input[type="checkbox"] {
+  margin: 0;
+}
+
+.wc-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
 .wc-chart {
   position: relative;
   width: 100%;
@@ -247,6 +292,42 @@ main {
   fill: #a9a9b3;
   font-size: 12px;
   font-weight: 400;
+}
+
+.wc-axis-label-calorie {
+  fill: #ff8a3d;
+}
+
+/* ---- Meal photo thumbnails ---- */
+
+.wc-thumbnails {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  padding-bottom: 4px;
+  overflow-x: auto;
+}
+
+.wc-thumbnail {
+  flex: none;
+  width: 84px;
+  margin: 0;
+  text-align: center;
+}
+
+.wc-thumbnail img {
+  display: block;
+  width: 84px;
+  height: 84px;
+  border-radius: 12px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+}
+
+.wc-thumbnail figcaption {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: var(--muted);
 }
 
 /* ---- Tooltip ---- */
@@ -300,6 +381,10 @@ main {
   .wc-header {
     flex-direction: column;
     gap: 12px;
+  }
+
+  .wc-header-actions {
+    align-self: flex-start;
   }
 
   .wc-add {

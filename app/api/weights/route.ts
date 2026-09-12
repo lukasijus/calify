@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import { listEntries, saveEntry } from "../../lib/weight-repo";
 import type { WeightEntry } from "../../lib/weight";
+import { LOCAL_ISO, normalizeLocalIso } from "../../lib/date";
 
 // Weight data is per-request and lives in Postgres; never prerender this.
 export const dynamic = "force-dynamic";
-
-const LOCAL_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?$/;
 
 export async function GET() {
   try {
@@ -40,7 +39,7 @@ export async function POST(request: Request) {
   const entry: WeightEntry = {
     id: crypto.randomUUID(),
     kg: Math.round(kgNumber * 100) / 100,
-    at: at.length === 16 ? `${at}:00.000` : at,
+    at: normalizeLocalIso(at),
     source: "manual",
   };
 
