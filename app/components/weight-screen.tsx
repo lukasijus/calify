@@ -10,12 +10,20 @@ import {
   type Period,
   type WeightEntry,
 } from "../lib/weight";
+import type { CalorieEntry } from "../lib/calories";
+import { AddCaloriesForm } from "./add-calories-form";
 import { AddWeightForm } from "./add-weight-form";
 import { WeightChart } from "./weight-chart";
 
 const API = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/weights`;
 
+const CALORIES_API = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/calories`;
+
 export function WeightScreen() {
+  const [calories, setCalories] = useState<CalorieEntry[]>([]);
+  const [showCaloriesForm, setShowCaloriesForm] = useState(false);
+  const [showWeight, setShowWeight] = useState(true);
+  const [showCalories, setShowCalories] = useState(true);
   const [entries, setEntries] = useState<WeightEntry[]>([]);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,15 +34,24 @@ export function WeightScreen() {
     const controller = new AbortController();
     (async () => {
       try {
-        const response = await fetch(API, { cache: "no-store", signal: controller.signal });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = (await response.json()) as { entries: WeightEntry[] };
-        setEntries(sortByTime(data.entries));
+        const results = await Promise.allSettled([
+          fetch(API, { cache: "no-store", signal: controller.signal }).then(async (response) => {
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json() as { entries: WeightEntry[] };
+            setEntries(sortByTime(data.entries));
+          }),
+          fetch(CALORIES_API, { cache: "no-store", signal: controller.signal }).then(async (response) => {
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json() as { entries: CalorieEntry[] };
+            setCalories(sortByTime(data.entries));
+          }),
+        ]);
+        if (results.some((result) => result.status === "rejected")) throw new Error("History unavailable");
         setError(null);
       } catch (cause) {
         if (controller.signal.aborted) return;
         console.error("failed to load weight history", cause);
-        setError("Couldn't load your weight history. Refresh to try again.");
+        setError("Couldn't load all your history. Refresh to try again.");
       } finally {
         if (!controller.signal.aborted) setReady(true);
       }
@@ -67,7 +84,22 @@ export function WeightScreen() {
     [],
   );
 
-  const visible = useMemo(() => filterByPeriod(entries, period), [entries, period]);
+  const handleAddCalories = async (kcal: number, at: string, image: string | null) => {
+    const response = await fetch(CALORIES_API, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kcal, at, image }),
+    });
+    if (!response.ok) throw new Error("Couldn't save calories. Try again.");
+    const { entry } = await response.json() as { entry: CalorieEntry };
+    setCalories((previous) => sortByTime([...previous, entry]));
+    setPeriod("All");
+    setShowCalories(true);
+  };
+
+  const anchor = Math.max(0, ...entries.map((e) => Date.parse(e.at)), ...calories.map((e) => Date.parse(e.at)));
+  const visible = useMemo(() => filterByPeriod(entries, period, anchor), [entries, period, anchor]);
+  const visibleCalories = useMemo(() => filterByPeriod(calories, period, anchor), [calories, period, anchor]);
 
   const stats = useMemo(() => {
     if (entries.length === 0) return null;
@@ -102,6 +134,8 @@ export function WeightScreen() {
             </p>
           )}
         </div>
+        <div className="wc-add-actions">
+        <button type="button" className="wc-btn wc-btn-primary" onClick={() => setShowCaloriesForm(true)}>＋ Add calories</button>
         <button
           type="button"
           className="wc-btn wc-btn-primary wc-add"
@@ -109,7 +143,10 @@ export function WeightScreen() {
         >
           {showForm ? "Close" : "＋ Add weight"}
         </button>
+        </div>
       </header>
+
+      {showCaloriesForm && <AddCaloriesForm onAdd={handleAddCalories} onClose={() => setShowCaloriesForm(false)} />}
 
       {showForm && <AddWeightForm onAdd={handleAdd} onClose={() => setShowForm(false)} />}
 
@@ -133,8 +170,13 @@ export function WeightScreen() {
         ))}
       </div>
 
+      <div className="wc-legend" role="group" aria-label="Visible graphs">
+        <label><input type="checkbox" checked={showWeight} onChange={(event) => setShowWeight(event.target.checked)} /><span className="wc-legend-line" />Weight (kg)</label>
+        <label><input type="checkbox" checked={showCalories} onChange={(event) => setShowCalories(event.target.checked)} /><span className="wc-legend-line is-calories" />Calories (kcal/day)</label>
+      </div>
+
       {ready ? (
-        <WeightChart entries={visible} />
+        <WeightChart entries={visible} calories={visibleCalories} showWeight={showWeight} showCalories={showCalories} />
       ) : (
         <div className="wc-chart wc-chart-empty" aria-hidden />
       )}
