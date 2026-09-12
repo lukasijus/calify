@@ -10,6 +10,7 @@ import {
   type WeightEntry,
 } from "../lib/weight";
 import { createCalorieEntry, type CalorieEntry } from "../lib/calorie";
+import { calorieSaveError } from "../lib/upload-error";
 import { formatDayMonth } from "../lib/date";
 import { AddWeightForm } from "./add-weight-form";
 import { AddCalorieForm } from "./add-calorie-form";
@@ -98,13 +99,13 @@ export function WeightScreen() {
       form.set("at", optimistic.at);
       if (image) form.set("image", image);
       const response = await fetch(CALORIES_API, { method: "POST", body: form });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) throw new Error(await calorieSaveError(response));
       const { entry } = (await response.json()) as { entry: CalorieEntry };
       setCalories((prev) => sortByTime(prev.map((item) => (item.id === optimistic.id ? entry : item))));
     } catch (cause) {
       console.error("failed to save calories", cause);
       setCalories((prev) => prev.filter((item) => item.id !== optimistic.id));
-      setError("Couldn't save calories. Try again.");
+      setError(cause instanceof Error ? cause.message : "Couldn't save calories. Try again.");
     } finally {
       if (optimistic.imageUrl?.startsWith("blob:")) URL.revokeObjectURL(optimistic.imageUrl);
     }
