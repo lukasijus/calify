@@ -306,3 +306,36 @@ main {
     align-self: flex-start;
   }
 }
+
+.wc-add-actions, .wc-legend, .wc-legend label, .wc-day-navigation {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.wc-legend { margin: 16px 0; font-size: 0.85rem; }
+.wc-legend label { gap: 6px; cursor: pointer; }
+.wc-legend-line { width: 20px; border-top: 3px solid var(--accent); }
+.wc-legend-line.is-calories { border-top: 3px dashed #c36b19; }
+.wc-modal {
+  width: min(460px, calc(100% - 28px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: var(--shadow-lg);
+}
+.wc-modal::backdrop { background: rgb(16 16 20 / 35%); }
+.wc-modal h2 { margin: 0 0 20px; font-size: 1.2rem; }
+.wc-calorie-fields { border: 0; padding: 0; margin: 0; display: grid; gap: 16px; min-width: 0; }
+.wc-calorie-fields input { min-width: 0; width: 100%; }
+.wc-btn:disabled { opacity: 0.5; cursor: default; }
+.wc-day-browser { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 16px; }
+.wc-day-navigation { justify-content: space-between; flex-wrap: nowrap; font-size: 0.85rem; }
+.wc-thumbnails { display: flex; gap: 12px; overflow-x: auto; padding: 8px 0; }
+.wc-thumbnails figure { margin: 0; flex: none; }
+.wc-thumbnails img { display: block; border-radius: 10px; object-fit: cover; }
+.wc-thumbnails figcaption { margin-top: 6px; font-size: 0.75rem; color: var(--muted); }
+.wc-no-images, .wc-chart-notice { color: var(--muted); font-size: 0.85rem; }

@@ -63,6 +63,15 @@ async function runBootstrap(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       )
     `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS calorie_entries (
+        id         TEXT PRIMARY KEY,
+        kcal       INTEGER NOT NULL CHECK (kcal > 0 AND kcal <= 100000),
+        at         TEXT NOT NULL,
+        image      TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
     await seedHistorical(client);
   } finally {
     client.release();

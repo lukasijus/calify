@@ -2,12 +2,16 @@
 
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
+import { dailyCalories, type CalorieEntry } from "../lib/calories";
 import { formatDayMonth, type WeightEntry } from "../lib/weight";
 
 type TrendPoint = { at: string; kg: number };
 
 type WeightChartProps = {
   entries: WeightEntry[];
+  calories: CalorieEntry[];
+  showWeight: boolean;
+  showCalories: boolean;
   /**
    * Optional smoothed series (e.g. 7-day moving average). Rendered as a second,
    * thinner line so raw weigh-ins stay distinguishable from the trend. Not
@@ -18,7 +22,8 @@ type WeightChartProps = {
 };
 
 const ACCENT = "#2f6bff";
-const PADDING = { top: 20, right: 16, bottom: 28, left: 44 } as const;
+const CALORIE_COLOR = "#c36b19";
+const PADDING = { top: 20, right: 72, bottom: 28, left: 44 } as const;
 
 function formatKg(kg: number): string {
   return kg.toFixed(1);
@@ -83,10 +88,16 @@ function useContainerWidth() {
   return [ref, width] as const;
 }
 
-export function WeightChart({ entries, trend }: WeightChartProps) {
+export function WeightChart({ entries, calories, showWeight, showCalories, trend }: WeightChartProps) {
   const [containerRef, width] = useContainerWidth();
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const totals = useMemo(() => dailyCalories(calories), [calories]);
+  const days = useMemo(() => [...new Set([...entries, ...calories].map((entry) => entry.at.slice(0, 10)))].sort(), [entries, calories]);
+  const day = selectedDay && days.includes(selectedDay) ? selectedDay : days[days.length - 1];
+  const dayImages = calories.filter((entry) => entry.at.startsWith(day) && entry.image);
+  const dayWeight = entries.filter((entry) => entry.at.startsWith(day)).at(-1);
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const [hover, setHover] = useState<{ index: number; pointerY: number } | null>(null);
+  const [hover, setHover] = useState<{ pointerY: number } | null>(null);
   const [tooltipSize, setTooltipSize] = useState({ w: 150, h: 56 });
 
   const height =
@@ -99,29 +110,29 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
   const layout = useMemo(
     () => ({
       left: PADDING.left,
-      right: width - PADDING.right,
+      right: width - (showCalories && totals.length > 0 ? PADDING.right : 16),
       top: PADDING.top,
       bottom: height - PADDING.bottom,
     }),
-    [width, height],
+    [width, height, showCalories, totals.length],
   );
 
   const model = useMemo(() => {
-    if (entries.length === 0 || width === 0) return null;
+    if (days.length === 0 || width === 0) return null;
 
-    const times = entries.map((e) => Date.parse(e.at));
+    const times = [...entries.map((e) => Date.parse(e.at)), ...days.map((day) => Date.parse(`${day}T12:00:00.000`))];
     const minTime = Math.min(...times);
     const maxTime = Math.max(...times);
     const timeSpan = maxTime - minTime || 1;
 
     const values = entries.map((e) => e.kg);
-    const dataMin = Math.min(...values);
-    const dataMax = Math.max(...values);
+    const dataMin = values.length ? Math.min(...values) : 0;
+    const dataMax = values.length ? Math.max(...values) : 1;
     const valuePad = Math.max((dataMax - dataMin) * 0.18, 0.4);
     const scale = niceScale(dataMin - valuePad, dataMax + valuePad, 5);
 
     const xFor = (time: number) =>
-      entries.length === 1
+      minTime === maxTime
         ? (layout.left + layout.right) / 2
         : layout.left + ((time - minTime) / timeSpan) * (layout.right - layout.left);
     const yFor = (kg: number) =>
@@ -131,6 +142,16 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
       entry,
       x: xFor(Date.parse(entry.at)),
       y: yFor(entry.kg),
+    }));
+
+    const calorieScale = niceScale(0, Math.max(1, ...totals.map((entry) => entry.kcal)), 5);
+    const calorieYFor = (kcal: number) => layout.bottom - (kcal / calorieScale.max) * (layout.bottom - layout.top);
+    const caloriePoints = totals.map((entry) => ({ entry, x: xFor(Date.parse(entry.at)), y: calorieYFor(entry.kcal) }));
+    const dayPoints = days.map((day) => ({
+      day,
+      x: xFor(Date.parse(`${day}T12:00:00.000`)),
+      weight: points.filter((point) => point.entry.at.startsWith(day)).at(-1),
+      calories: caloriePoints.find((point) => point.entry.at.startsWith(day)),
     }));
 
     const trendPoints =
@@ -143,25 +164,26 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
     // Sparse, non-overlapping x labels: first + last + evenly spaced middles.
     const maxLabels = width < 380 ? 3 : width < 560 ? 4 : 6;
     const labelIndexes: number[] = [];
-    if (points.length <= maxLabels) {
-      for (let i = 0; i < points.length; i++) labelIndexes.push(i);
+    if (dayPoints.length <= maxLabels) {
+      for (let i = 0; i < dayPoints.length; i++) labelIndexes.push(i);
     } else {
       for (let i = 0; i < maxLabels; i++) {
-        labelIndexes.push(Math.round((i * (points.length - 1)) / (maxLabels - 1)));
+        labelIndexes.push(Math.round((i * (dayPoints.length - 1)) / (maxLabels - 1)));
       }
     }
     const xLabels = labelIndexes
       .filter((value, i, arr) => arr.indexOf(value) === i)
       .map((index) => ({
         index,
-        x: points[index].x,
-        text: formatDayMonth(new Date(points[index].entry.at)),
+        x: dayPoints[index].x,
+        text: formatDayMonth(new Date(`${dayPoints[index].day}T12:00:00`)),
       }))
       .filter((label, i, arr) => i === 0 || label.text !== arr[i - 1].text);
 
     const tickDecimals = scale.step < 1 ? 1 : 0;
 
     return {
+      dayPoints, caloriePoints, calorieScale, calorieYFor,
       points,
       latest: points[points.length - 1],
       trendPoints,
@@ -171,7 +193,7 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
       xLabels,
       linePath: smoothPath(points),
     };
-  }, [entries, trend, width, layout]);
+  }, [entries, days, totals, trend, width, layout]);
 
   useLayoutEffect(() => {
     if (!tooltipRef.current) return;
@@ -194,19 +216,20 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
     }
     let nearest = 0;
     let best = Infinity;
-    model.points.forEach((point, index) => {
+    model.dayPoints.forEach((point, index) => {
       const distance = Math.abs(point.x - px);
       if (distance < best) {
         best = distance;
         nearest = index;
       }
     });
-    setHover({ index: nearest, pointerY: py });
+    setSelectedDay(model.dayPoints[nearest].day);
+    setHover({ pointerY: py });
   };
 
   const clearHover = () => setHover(null);
 
-  const active = hover && model ? model.points[hover.index] : null;
+  const active = model?.dayPoints.find((point) => point.day === day);
   const latest = model ? model.latest : null;
 
   let tooltipLeft = 0;
@@ -222,22 +245,24 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
   }
 
   return (
+    <>
     <div
       ref={containerRef}
-      className={`wc-chart${entries.length === 0 ? " wc-chart-empty" : ""}`}
+      className={`wc-chart${days.length === 0 ? " wc-chart-empty" : ""}`}
       onPointerMove={handlePointer}
       onPointerDown={handlePointer}
       onPointerLeave={clearHover}
       onPointerCancel={clearHover}
     >
-      {entries.length === 0 && <p>No weigh-ins yet. Add your first entry to start the graph.</p>}
+      {days.length === 0 && <p>No entries yet. Add weight or calories to start the graph.</p>}
+      {days.length > 0 && !showWeight && !showCalories && <p className="wc-chart-notice">Select a graph in the legend to show it.</p>}
       {width > 0 && model && (
         <svg
           width={width}
           height={height}
           viewBox={`0 0 ${width} ${height}`}
           role="img"
-          aria-label={`Weight history chart, latest ${formatKg(model.latest.entry.kg)} kilograms`}
+          aria-label={`History chart. ${showWeight ? "Weight in kilograms. " : ""}${showCalories ? "Daily calories in kilocalories." : ""} Use the day slider below to explore entries and images.`}
         >
           <defs>
             <linearGradient id="wc-area" x1="0" y1="0" x2="0" y2="1">
@@ -247,7 +272,7 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
           </defs>
 
           {/* horizontal grid + y labels */}
-          {model.ticks.map((tick) => {
+          {showWeight && entries.length > 0 && model.ticks.map((tick) => {
             const y = model.yFor(tick);
             return (
               <g key={tick}>
@@ -273,6 +298,16 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
             );
           })}
 
+          {showCalories && totals.length > 0 && model.calorieScale.ticks.map((tick) => (
+            <text key={`kcal-${tick}`} x={layout.right + 8} y={model.calorieYFor(tick)} dominantBaseline="middle" className="wc-axis-label" style={{ fill: CALORIE_COLOR }}>{tick}kcal</text>
+          ))}
+          {showCalories && (
+            <g>
+              <path d={model.caloriePoints.map((point, index) => `${index ? "L" : "M"}${point.x},${point.y}`).join(" ")} fill="none" stroke={CALORIE_COLOR} strokeWidth={2.25} strokeDasharray="6 3" />
+              {model.caloriePoints.map((point) => <circle key={point.entry.at} cx={point.x} cy={point.y} r={3.5} fill={CALORIE_COLOR} />)}
+            </g>
+          )}
+
           {/* x labels */}
           {model.xLabels.map((label, i) => (
             <text
@@ -287,13 +322,13 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
           ))}
 
           {/* area + line */}
-          {model.points.length > 1 && (
+          {showWeight && model.points.length > 1 && (
             <path
-              d={`${model.linePath} L${layout.right},${layout.bottom} L${model.points[0].x},${layout.bottom} Z`}
+              d={`${model.linePath} L${model.points[model.points.length - 1].x},${layout.bottom} L${model.points[0].x},${layout.bottom} Z`}
               fill="url(#wc-area)"
             />
           )}
-          {model.trendPoints.length > 1 && (
+          {showWeight && model.trendPoints.length > 1 && (
             <path
               d={smoothPath(model.trendPoints)}
               fill="none"
@@ -303,17 +338,17 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
               strokeLinecap="round"
             />
           )}
-          <path
+          {showWeight && <path
             d={model.linePath}
             fill="none"
             stroke={ACCENT}
             strokeWidth={2.25}
             strokeLinecap="round"
             strokeLinejoin="round"
-          />
+          />}
 
           {/* latest value marker + quiet guide (hidden while scrubbing) */}
-          {latest && !active && (
+          {showWeight && latest && !active && (
             <>
               <line
                 x1={latest.x}
@@ -348,8 +383,8 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
                 strokeWidth={1}
                 strokeDasharray="3 4"
               />
-              <circle cx={active.x} cy={active.y} r={9} fill={ACCENT} fillOpacity={0.14} />
-              <circle cx={active.x} cy={active.y} r={4.5} fill={ACCENT} stroke="#fff" strokeWidth={2.5} />
+              {showWeight && active.weight && <circle cx={active.weight.x} cy={active.weight.y} r={4.5} fill={ACCENT} stroke="#fff" strokeWidth={2.5} />}
+              {showCalories && active.calories && <circle cx={active.calories.x} cy={active.calories.y} r={4.5} fill={CALORIE_COLOR} stroke="#fff" strokeWidth={2.5} />}
             </>
           )}
         </svg>
@@ -361,14 +396,41 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
           className="wc-tooltip"
           style={{ left: `${tooltipLeft}px`, top: `${tooltipTop}px` }}
         >
-          <div className="wc-tooltip-date">{formatDayMonth(new Date(active.entry.at))}</div>
-          <div className="wc-tooltip-row">
+          <div className="wc-tooltip-date">{formatDayMonth(new Date(`${active.day}T12:00:00`))}</div>
+          {showWeight && active.weight && <div className="wc-tooltip-row">
             <span className="wc-tooltip-dot" />
             <span className="wc-tooltip-label">Weight</span>
-            <span className="wc-tooltip-value">{formatKg(active.entry.kg)} kg</span>
-          </div>
+            <span className="wc-tooltip-value">{formatKg(active.weight.entry.kg)} kg</span>
+          </div>}
+          {showCalories && active.calories && <div className="wc-tooltip-row">
+            <span className="wc-tooltip-dot" style={{ background: CALORIE_COLOR }} />
+            <span className="wc-tooltip-label">Calories</span>
+            <span className="wc-tooltip-value">{active.calories.entry.kcal} kcal</span>
+          </div>}
         </div>
       )}
     </div>
+    {days.length > 0 && <section className="wc-day-browser" aria-label="Daily entries and images">
+      <label className="wc-field">
+        <span>Browse days</span>
+        <input type="range" min={0} max={days.length - 1} value={days.indexOf(day)}
+          aria-valuetext={day}
+          onChange={(event) => { setSelectedDay(days[Number(event.target.value)]); setHover(null); }} />
+      </label>
+      <div className="wc-day-navigation">
+        <button className="wc-btn wc-btn-ghost" type="button" aria-label="Previous day" disabled={days.indexOf(day) === 0} onClick={() => { setSelectedDay(days[days.indexOf(day) - 1]); setHover(null); }}>←</button>
+        <p aria-live="polite"><time dateTime={day}>{day}</time> · {totals.find((entry) => entry.at.startsWith(day))?.kcal ?? "No"} kcal logged{dayWeight && <> · {formatKg(dayWeight.kg)} kg</>}</p>
+        <button className="wc-btn wc-btn-ghost" type="button" aria-label="Next day" disabled={days.indexOf(day) === days.length - 1} onClick={() => { setSelectedDay(days[days.indexOf(day) + 1]); setHover(null); }}>→</button>
+      </div>
+      {dayImages.length ? <div className="wc-thumbnails">
+        {dayImages.map((entry) => <figure key={entry.id}>
+          {/* Uploaded data URLs are already local and do not need the image optimizer. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={entry.image!} alt={`Food entry, ${entry.kcal} kcal on ${day} at ${entry.at.slice(11, 16)}`} width={96} height={96} />
+          <figcaption>{entry.at.slice(11, 16)} · {entry.kcal} kcal</figcaption>
+        </figure>)}
+      </div> : <p className="wc-no-images">No images for this day.</p>}
+    </section>}
+    </>
   );
 }
