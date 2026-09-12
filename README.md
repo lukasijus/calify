@@ -1,7 +1,24 @@
 # Calify
 
 Calify is a local calorie and body tracker. The current MVP is a single,
-focused **weight-history graph**.
+focused **weight and calorie history graph**.
+
+## Calories and images
+
+- `Add calories` opens a modal for kcal, local date/time, and one optional
+  JPEG, PNG, or WebP image, up to 8 MiB (shown as 8 MB in the UI).
+- Entries and image bytes are saved together in PostgreSQL's `calorie_entries`
+  table. `/api/calories` accepts multipart uploads; history responses contain
+  image availability only. `/api/calories/[id]/image` serves images on demand.
+- Daily calorie totals share the weight chart's date axis, with kcal on the
+  right and kg on the left. Legend checkboxes toggle each series. Periods are
+  anchored to the latest entry across both series.
+- Scrub the graph, use previous/next day, or pick a date to view that day's
+  totals and image thumbnails. Click a thumbnail to open the original image.
+- Failed saves preserve form values for retry. Both browser and server enforce
+  the image limit; the server also bounds multipart requests and checks file
+  signatures. Any deployment proxy must allow 8 MiB plus multipart overhead.
+- Run `pnpm test` for upload validation and daily aggregation regression tests.
 
 ## Local development
 
@@ -24,7 +41,7 @@ Every push to `main` redeploys it via `.github/workflows/deploy-main-preview.yml
 
 ## Weight graph
 
-- One full-width, minimal weight chart is the only content on the page
+- One full-width chart displays weight and calorie history
   (`app/page.tsx` → `app/components/weight-screen.tsx`).
 - Entries persist in **PostgreSQL** (`weight_entries` table), served through the
   `/api/weights` route (`GET` list, `POST` add). Data access is in
@@ -39,7 +56,7 @@ Every push to `main` redeploys it via `.github/workflows/deploy-main-preview.yml
 - Each PR preview gets its own isolated Postgres (`data` network is
   project-local); only the main deployment's database has real history.
 - `Add weight` takes a weight in kg and a date/time (defaults to now).
-- Period selector: `1M · 3M · 6M · All`, anchored to the latest weigh-in.
+- Period selector: `1M · 3M · 6M · All`, anchored to the latest weight or calorie entry.
 - The chart is a hand-rolled SVG (no chart dependency) so the visual — smooth
   thin line, subtle area fade, sparse labels, cursor-following tooltip — can be
   tuned precisely. `WeightChart` already accepts an optional `trend` series and
