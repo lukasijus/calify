@@ -63,6 +63,16 @@ async function runBootstrap(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       )
     `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS calorie_entries (
+        id TEXT PRIMARY KEY,
+        kcal DOUBLE PRECISION NOT NULL CHECK (kcal > 0 AND kcal <= 100000),
+        at TEXT NOT NULL,
+        image BYTEA CHECK (octet_length(image) <= 8388608),
+        image_type TEXT CHECK (image_type IN ('image/jpeg', 'image/png', 'image/webp')),
+        CHECK ((image IS NULL) = (image_type IS NULL))
+      )
+    `);
     await seedHistorical(client);
   } finally {
     client.release();

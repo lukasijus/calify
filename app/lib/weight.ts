@@ -26,7 +26,7 @@ export type WeightEntry = {
   source: WeightSource;
 };
 
-export function sortByTime(entries: readonly WeightEntry[]): WeightEntry[] {
+export function sortByTime<T extends { at: string }>(entries: readonly T[]): T[] {
   return [...entries].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 }
 
@@ -45,7 +45,7 @@ const PERIOD_DAYS: Record<Exclude<Period, "All">, number> = {
  * "now" (the sample data lives in the future and, more importantly, users care
  * about the window ending at their latest weigh-in).
  */
-export function filterByPeriod(entries: readonly WeightEntry[], period: Period): WeightEntry[] {
+export function filterByPeriod<T extends { at: string }>(entries: readonly T[], period: Period): T[] {
   const sorted = sortByTime(entries);
   if (period === "All" || sorted.length === 0) return sorted;
   const anchor = Date.parse(sorted[sorted.length - 1].at);

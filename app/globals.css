@@ -159,6 +159,8 @@ main {
 }
 
 .wc-field input {
+  width: 100%;
+  min-width: 0;
   font: inherit;
   font-size: 0.95rem;
   color: var(--fg);
@@ -167,6 +169,34 @@ main {
   border-radius: 10px;
   background: #fff;
 }
+
+.wc-header-actions, .wc-legend, .wc-day-nav, .wc-thumbnails {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.wc-header-actions, .wc-legend { flex-wrap: wrap; }
+.wc-legend { margin-top: 18px; }
+.wc-legend label { display: flex; align-items: center; gap: 5px; }
+.wc-legend-weight { color: var(--accent); }
+.wc-legend-calories { color: #d97706; }
+.wc-day-nav { justify-content: space-between; }
+.wc-day-nav p { text-align: center; font-size: 0.9rem; }
+.wc-thumbnails { overflow-x: auto; margin-top: 16px; }
+.wc-thumbnails img { object-fit: cover; border-radius: 10px; }
+.wc-btn:disabled { opacity: 0.5; cursor: default; }
+.wc-modal {
+  width: min(440px, calc(100% - 28px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: var(--shadow-lg);
+}
+.wc-modal::backdrop { background: rgb(0 0 0 / 35%); }
+.wc-modal h2 { margin: 0 0 24px; }
+.wc-calorie-fields { display: grid; gap: 18px; margin: 0; padding: 0; border: 0; min-width: 0; }
 
 .wc-field input:focus {
   outline: 2px solid var(--accent);
