@@ -2,9 +2,12 @@
 
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { formatDayMonth, type WeightEntry } from "../lib/weight";
+import { formatDayMonth } from "../lib/date";
+import type { WeightEntry } from "../lib/weight";
 
 type TrendPoint = { at: string; kg: number };
+
+export type CaloriePoint = { id: string; at: string; kcal: number };
 
 type WeightChartProps = {
   entries: WeightEntry[];
@@ -15,13 +18,27 @@ type WeightChartProps = {
    * without reworking the chart.
    */
   trend?: TrendPoint[];
+  /** Calorie log entries drawn on the same canvas, right-hand axis. */
+  calories?: CaloriePoint[];
+  /** Legend/checkbox visibility, lifted to the parent so other UI (e.g. the
+   * image thumbnail strip) can react to the same toggle. */
+  showWeight: boolean;
+  showCalories: boolean;
+  onToggleWeight: () => void;
+  onToggleCalories: () => void;
 };
 
-const ACCENT = "#2f6bff";
+const WEIGHT_COLOR = "#2f6bff";
+const CALORIE_COLOR = "#ff8a3d";
 const PADDING = { top: 20, right: 16, bottom: 28, left: 44 } as const;
+const DUAL_AXIS_RIGHT_PADDING = 40;
 
 function formatKg(kg: number): string {
   return kg.toFixed(1);
+}
+
+function formatKcal(kcal: number): string {
+  return Math.round(kcal).toString();
 }
 
 /** "Nice" number for axis ticks (Heckbert's algorithm). */
@@ -83,11 +100,37 @@ function useContainerWidth() {
   return [ref, width] as const;
 }
 
-export function WeightChart({ entries, trend }: WeightChartProps) {
+/** Closest point to a pixel x-coordinate, or null for an empty series. */
+function nearestByX<T extends { x: number }>(points: readonly T[], px: number): T | null {
+  let nearest: T | null = null;
+  let best = Infinity;
+  for (const point of points) {
+    const distance = Math.abs(point.x - px);
+    if (distance < best) {
+      best = distance;
+      nearest = point;
+    }
+  }
+  return nearest;
+}
+
+export function WeightChart({
+  entries,
+  trend,
+  calories = [],
+  showWeight,
+  showCalories,
+  onToggleWeight,
+  onToggleCalories,
+}: WeightChartProps) {
   const [containerRef, width] = useContainerWidth();
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const [hover, setHover] = useState<{ index: number; pointerY: number } | null>(null);
+  const [hover, setHover] = useState<{ px: number; pointerY: number } | null>(null);
   const [tooltipSize, setTooltipSize] = useState({ w: 150, h: 56 });
+
+  const weightVisible = showWeight && entries.length > 0;
+  const caloriesVisible = showCalories && calories.length > 0;
+  const dualAxis = weightVisible && caloriesVisible;
 
   const height =
     width === 0
@@ -99,79 +142,129 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
   const layout = useMemo(
     () => ({
       left: PADDING.left,
-      right: width - PADDING.right,
+      right: width - (dualAxis ? DUAL_AXIS_RIGHT_PADDING : PADDING.right),
       top: PADDING.top,
       bottom: height - PADDING.bottom,
     }),
-    [width, height],
+    [width, height, dualAxis],
   );
 
   const model = useMemo(() => {
-    if (entries.length === 0 || width === 0) return null;
+    if ((!weightVisible && !caloriesVisible) || width === 0) return null;
 
-    const times = entries.map((e) => Date.parse(e.at));
+    const times = [
+      ...(weightVisible ? entries.map((e) => Date.parse(e.at)) : []),
+      ...(caloriesVisible ? calories.map((c) => Date.parse(c.at)) : []),
+    ];
     const minTime = Math.min(...times);
     const maxTime = Math.max(...times);
     const timeSpan = maxTime - minTime || 1;
-
-    const values = entries.map((e) => e.kg);
-    const dataMin = Math.min(...values);
-    const dataMax = Math.max(...values);
-    const valuePad = Math.max((dataMax - dataMin) * 0.18, 0.4);
-    const scale = niceScale(dataMin - valuePad, dataMax + valuePad, 5);
+    const singlePoint = times.length <= 1 || minTime === maxTime;
 
     const xFor = (time: number) =>
-      entries.length === 1
+      singlePoint
         ? (layout.left + layout.right) / 2
         : layout.left + ((time - minTime) / timeSpan) * (layout.right - layout.left);
-    const yFor = (kg: number) =>
-      layout.bottom - ((kg - scale.min) / (scale.max - scale.min)) * (layout.bottom - layout.top);
 
-    const points = entries.map((entry) => ({
-      entry,
-      x: xFor(Date.parse(entry.at)),
-      y: yFor(entry.kg),
-    }));
+    let weightScale: ReturnType<typeof niceScale> | null = null;
+    let weightPoints: { entry: WeightEntry; x: number; y: number }[] = [];
+    let yForWeight: (kg: number) => number = () => layout.bottom;
+    if (weightVisible) {
+      const values = entries.map((e) => e.kg);
+      const dataMin = Math.min(...values);
+      const dataMax = Math.max(...values);
+      const valuePad = Math.max((dataMax - dataMin) * 0.18, 0.4);
+      weightScale = niceScale(dataMin - valuePad, dataMax + valuePad, 5);
+      const scale = weightScale;
+      yForWeight = (kg) =>
+        layout.bottom - ((kg - scale.min) / (scale.max - scale.min)) * (layout.bottom - layout.top);
+      weightPoints = entries.map((entry) => ({
+        entry,
+        x: xFor(Date.parse(entry.at)),
+        y: yForWeight(entry.kg),
+      }));
+    }
+
+    let calorieScale: ReturnType<typeof niceScale> | null = null;
+    let caloriePoints: { entry: CaloriePoint; x: number; y: number }[] = [];
+    let yForCalories: (kcal: number) => number = () => layout.bottom;
+    if (caloriesVisible) {
+      const values = calories.map((c) => c.kcal);
+      const dataMin = Math.min(...values);
+      const dataMax = Math.max(...values);
+      const valuePad = Math.max((dataMax - dataMin) * 0.18, 40);
+      calorieScale = niceScale(Math.max(0, dataMin - valuePad), dataMax + valuePad, 5);
+      const scale = calorieScale;
+      yForCalories = (kcal) =>
+        layout.bottom - ((kcal - scale.min) / (scale.max - scale.min)) * (layout.bottom - layout.top);
+      caloriePoints = calories.map((entry) => ({
+        entry,
+        x: xFor(Date.parse(entry.at)),
+        y: yForCalories(entry.kcal),
+      }));
+    }
 
     const trendPoints =
-      trend && trend.length > 1
+      weightVisible && trend && trend.length > 1
         ? trend
             .filter((p) => Date.parse(p.at) >= minTime && Date.parse(p.at) <= maxTime)
-            .map((p) => ({ x: xFor(Date.parse(p.at)), y: yFor(p.kg) }))
+            .map((p) => ({ x: xFor(Date.parse(p.at)), y: yForWeight(p.kg) }))
         : [];
 
     // Sparse, non-overlapping x labels: first + last + evenly spaced middles.
+    const labelSource = weightVisible ? weightPoints : caloriePoints;
     const maxLabels = width < 380 ? 3 : width < 560 ? 4 : 6;
     const labelIndexes: number[] = [];
-    if (points.length <= maxLabels) {
-      for (let i = 0; i < points.length; i++) labelIndexes.push(i);
+    if (labelSource.length <= maxLabels) {
+      for (let i = 0; i < labelSource.length; i++) labelIndexes.push(i);
     } else {
       for (let i = 0; i < maxLabels; i++) {
-        labelIndexes.push(Math.round((i * (points.length - 1)) / (maxLabels - 1)));
+        labelIndexes.push(Math.round((i * (labelSource.length - 1)) / (maxLabels - 1)));
       }
     }
     const xLabels = labelIndexes
       .filter((value, i, arr) => arr.indexOf(value) === i)
       .map((index) => ({
         index,
-        x: points[index].x,
-        text: formatDayMonth(new Date(points[index].entry.at)),
+        x: labelSource[index].x,
+        text: formatDayMonth(new Date(labelSource[index].entry.at)),
       }))
       .filter((label, i, arr) => i === 0 || label.text !== arr[i - 1].text);
 
-    const tickDecimals = scale.step < 1 ? 1 : 0;
+    const weightTickDecimals = weightScale && weightScale.step < 1 ? 1 : 0;
+    const weightTicks = weightScale
+      ? weightScale.ticks.filter((t) => t >= weightScale!.min - 1e-9 && t <= weightScale!.max + 1e-9)
+      : [];
+    const calorieTicks = calorieScale
+      ? calorieScale.ticks.filter((t) => t >= calorieScale!.min - 1e-9 && t <= calorieScale!.max + 1e-9)
+      : [];
+    const formatWeightTick = (t: number) => `${t.toFixed(weightTickDecimals)}kg`;
+    const formatCalorieTick = (t: number) => `${formatKcal(t)}kcal`;
+
+    // Weight is the primary (left, gridded) axis whenever it's shown; calories
+    // take the left axis only when weight is hidden, and always fall back to
+    // the ungridded right axis alongside weight.
+    const primaryAxis = weightVisible
+      ? { ticks: weightTicks, yFor: yForWeight, format: formatWeightTick }
+      : caloriesVisible
+        ? { ticks: calorieTicks, yFor: yForCalories, format: formatCalorieTick }
+        : null;
+    const secondaryAxis = dualAxis ? { ticks: calorieTicks, yFor: yForCalories, format: formatKcal } : null;
 
     return {
-      points,
-      latest: points[points.length - 1],
+      weightPoints,
+      caloriePoints,
+      latestWeight: weightPoints[weightPoints.length - 1] ?? null,
       trendPoints,
-      ticks: scale.ticks.filter((t) => t >= scale.min - 1e-9 && t <= scale.max + 1e-9),
-      formatTick: (t: number) => `${t.toFixed(tickDecimals)}kg`,
-      yFor,
+      primaryAxis,
+      secondaryAxis,
+      yForWeight,
+      yForCalories,
       xLabels,
-      linePath: smoothPath(points),
+      weightLinePath: smoothPath(weightPoints),
+      calorieLinePath: smoothPath(caloriePoints),
     };
-  }, [entries, trend, width, layout]);
+  }, [entries, calories, trend, width, layout, weightVisible, caloriesVisible, dualAxis]);
 
   useLayoutEffect(() => {
     if (!tooltipRef.current) return;
@@ -192,29 +285,27 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
       setHover(null);
       return;
     }
-    let nearest = 0;
-    let best = Infinity;
-    model.points.forEach((point, index) => {
-      const distance = Math.abs(point.x - px);
-      if (distance < best) {
-        best = distance;
-        nearest = index;
-      }
-    });
-    setHover({ index: nearest, pointerY: py });
+    setHover({ px, pointerY: py });
   };
 
   const clearHover = () => setHover(null);
 
-  const active = hover && model ? model.points[hover.index] : null;
-  const latest = model ? model.latest : null;
+  const activeWeight = hover && model ? nearestByX(model.weightPoints, hover.px) : null;
+  const activeCalorie = hover && model ? nearestByX(model.caloriePoints, hover.px) : null;
+  const anchor =
+    activeWeight && activeCalorie
+      ? Math.abs(activeWeight.x - (hover?.px ?? 0)) <= Math.abs(activeCalorie.x - (hover?.px ?? 0))
+        ? activeWeight
+        : activeCalorie
+      : activeWeight ?? activeCalorie;
+  const latestWeight = model ? model.latestWeight : null;
 
   let tooltipLeft = 0;
   let tooltipTop = 0;
-  if (active && hover) {
+  if (anchor && hover) {
     const gap = 14;
-    tooltipLeft = active.x + gap;
-    if (tooltipLeft + tooltipSize.w > width - 4) tooltipLeft = active.x - gap - tooltipSize.w;
+    tooltipLeft = anchor.x + gap;
+    if (tooltipLeft + tooltipSize.w > width - 4) tooltipLeft = anchor.x - gap - tooltipSize.w;
     tooltipLeft = Math.max(4, tooltipLeft);
     tooltipTop = hover.pointerY - tooltipSize.h - gap;
     if (tooltipTop < 4) tooltipTop = hover.pointerY + gap;
@@ -222,153 +313,243 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
   }
 
   return (
-    <div
-      ref={containerRef}
-      className={`wc-chart${entries.length === 0 ? " wc-chart-empty" : ""}`}
-      onPointerMove={handlePointer}
-      onPointerDown={handlePointer}
-      onPointerLeave={clearHover}
-      onPointerCancel={clearHover}
-    >
-      {entries.length === 0 && <p>No weigh-ins yet. Add your first entry to start the graph.</p>}
-      {width > 0 && model && (
-        <svg
-          width={width}
-          height={height}
-          viewBox={`0 0 ${width} ${height}`}
-          role="img"
-          aria-label={`Weight history chart, latest ${formatKg(model.latest.entry.kg)} kilograms`}
-        >
-          <defs>
-            <linearGradient id="wc-area" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={ACCENT} stopOpacity={0.16} />
-              <stop offset="100%" stopColor={ACCENT} stopOpacity={0} />
-            </linearGradient>
-          </defs>
+    <div className="wc-chart-wrap">
+      <div className="wc-legend" role="group" aria-label="Show/hide graphs">
+        <label className="wc-legend-item">
+          <input type="checkbox" checked={showWeight} onChange={onToggleWeight} />
+          <span className="wc-legend-dot" style={{ background: WEIGHT_COLOR }} />
+          Weight
+        </label>
+        <label className="wc-legend-item">
+          <input type="checkbox" checked={showCalories} onChange={onToggleCalories} />
+          <span className="wc-legend-dot" style={{ background: CALORIE_COLOR }} />
+          Calories
+        </label>
+      </div>
+      <div
+        ref={containerRef}
+        className={`wc-chart${!weightVisible && !caloriesVisible ? " wc-chart-empty" : ""}`}
+        onPointerMove={handlePointer}
+        onPointerDown={handlePointer}
+        onPointerLeave={clearHover}
+        onPointerCancel={clearHover}
+      >
+        {!weightVisible && !caloriesVisible && (
+          <p>
+            {entries.length === 0 && calories.length === 0
+              ? "No entries yet. Add a weigh-in or calories to start the graph."
+              : "Turn on Weight or Calories above to see the graph."}
+          </p>
+        )}
+        {width > 0 && model && (
+          <svg
+            width={width}
+            height={height}
+            viewBox={`0 0 ${width} ${height}`}
+            role="img"
+            aria-label="Weight and calories history chart"
+          >
+            <defs>
+              <linearGradient id="wc-area" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={WEIGHT_COLOR} stopOpacity={0.16} />
+                <stop offset="100%" stopColor={WEIGHT_COLOR} stopOpacity={0} />
+              </linearGradient>
+            </defs>
 
-          {/* horizontal grid + y labels */}
-          {model.ticks.map((tick) => {
-            const y = model.yFor(tick);
-            return (
-              <g key={tick}>
-                <line
-                  x1={layout.left}
-                  x2={layout.right}
-                  y1={y}
-                  y2={y}
-                  stroke="#ececf0"
-                  strokeWidth={1}
-                  strokeDasharray="4 7"
-                />
-                <text
-                  x={layout.left - 10}
-                  y={y}
-                  textAnchor="end"
-                  dominantBaseline="middle"
-                  className="wc-axis-label"
-                >
-                  {model.formatTick(tick)}
-                </text>
-              </g>
-            );
-          })}
+            {/* horizontal grid + y labels for the primary axis (weight when
+                shown, otherwise calories) */}
+            {model.primaryAxis?.ticks.map((tick) => {
+              const y = model.primaryAxis!.yFor(tick);
+              return (
+                <g key={`primary-${tick}`}>
+                  <line
+                    x1={layout.left}
+                    x2={layout.right}
+                    y1={y}
+                    y2={y}
+                    stroke="#ececf0"
+                    strokeWidth={1}
+                    strokeDasharray="4 7"
+                  />
+                  <text
+                    x={layout.left - 10}
+                    y={y}
+                    textAnchor="end"
+                    dominantBaseline="middle"
+                    className="wc-axis-label"
+                  >
+                    {model.primaryAxis!.format(tick)}
+                  </text>
+                </g>
+              );
+            })}
 
-          {/* x labels */}
-          {model.xLabels.map((label, i) => (
-            <text
-              key={`${label.text}-${label.index}`}
-              x={label.x}
-              y={height - 8}
-              textAnchor={i === 0 ? "start" : i === model.xLabels.length - 1 ? "end" : "middle"}
-              className="wc-axis-label"
-            >
-              {label.text}
-            </text>
-          ))}
-
-          {/* area + line */}
-          {model.points.length > 1 && (
-            <path
-              d={`${model.linePath} L${layout.right},${layout.bottom} L${model.points[0].x},${layout.bottom} Z`}
-              fill="url(#wc-area)"
-            />
-          )}
-          {model.trendPoints.length > 1 && (
-            <path
-              d={smoothPath(model.trendPoints)}
-              fill="none"
-              stroke={ACCENT}
-              strokeOpacity={0.35}
-              strokeWidth={1.5}
-              strokeLinecap="round"
-            />
-          )}
-          <path
-            d={model.linePath}
-            fill="none"
-            stroke={ACCENT}
-            strokeWidth={2.25}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-
-          {/* latest value marker + quiet guide (hidden while scrubbing) */}
-          {latest && !active && (
-            <>
-              <line
-                x1={latest.x}
-                x2={latest.x}
-                y1={layout.top}
-                y2={layout.bottom}
-                stroke="#ececf0"
-                strokeWidth={1}
-              />
+            {/* right-hand calorie axis labels, only when both series share
+                the canvas (calories-only uses the primary axis above). */}
+            {model.secondaryAxis?.ticks.map((tick) => (
               <text
-                x={Math.min(latest.x, layout.right)}
-                y={layout.top - 7}
-                textAnchor="end"
+                key={`secondary-${tick}`}
+                x={layout.right + 8}
+                y={model.secondaryAxis!.yFor(tick)}
+                textAnchor="start"
+                dominantBaseline="middle"
+                className="wc-axis-label wc-axis-label-calorie"
+              >
+                {model.secondaryAxis!.format(tick)}
+              </text>
+            ))}
+
+            {/* x labels */}
+            {model.xLabels.map((label, i) => (
+              <text
+                key={`${label.text}-${label.index}`}
+                x={label.x}
+                y={height - 8}
+                textAnchor={i === 0 ? "start" : i === model.xLabels.length - 1 ? "end" : "middle"}
                 className="wc-axis-label"
               >
-                {formatDayMonth(new Date(latest.entry.at))}
+                {label.text}
               </text>
-              <circle cx={latest.x} cy={latest.y} r={8} fill={ACCENT} fillOpacity={0.14} />
-              <circle cx={latest.x} cy={latest.y} r={4} fill={ACCENT} stroke="#fff" strokeWidth={2} />
-            </>
-          )}
+            ))}
 
-          {/* hover crosshair + point */}
-          {active && (
-            <>
-              <line
-                x1={active.x}
-                x2={active.x}
-                y1={layout.top}
-                y2={layout.bottom}
-                stroke="#c7c7d1"
-                strokeWidth={1}
-                strokeDasharray="3 4"
+            {/* weight area + line */}
+            {weightVisible && model.weightPoints.length > 1 && (
+              <path
+                d={`${model.weightLinePath} L${layout.right},${layout.bottom} L${model.weightPoints[0].x},${layout.bottom} Z`}
+                fill="url(#wc-area)"
               />
-              <circle cx={active.x} cy={active.y} r={9} fill={ACCENT} fillOpacity={0.14} />
-              <circle cx={active.x} cy={active.y} r={4.5} fill={ACCENT} stroke="#fff" strokeWidth={2.5} />
-            </>
-          )}
-        </svg>
-      )}
+            )}
+            {weightVisible && model.trendPoints.length > 1 && (
+              <path
+                d={smoothPath(model.trendPoints)}
+                fill="none"
+                stroke={WEIGHT_COLOR}
+                strokeOpacity={0.35}
+                strokeWidth={1.5}
+                strokeLinecap="round"
+              />
+            )}
+            {weightVisible && (
+              <path
+                d={model.weightLinePath}
+                fill="none"
+                stroke={WEIGHT_COLOR}
+                strokeWidth={2.25}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            )}
 
-      {active && hover && (
-        <div
-          ref={tooltipRef}
-          className="wc-tooltip"
-          style={{ left: `${tooltipLeft}px`, top: `${tooltipTop}px` }}
-        >
-          <div className="wc-tooltip-date">{formatDayMonth(new Date(active.entry.at))}</div>
-          <div className="wc-tooltip-row">
-            <span className="wc-tooltip-dot" />
-            <span className="wc-tooltip-label">Weight</span>
-            <span className="wc-tooltip-value">{formatKg(active.entry.kg)} kg</span>
+            {/* calorie line + per-entry dots (logs are sparse, so every point
+                is marked rather than only the latest). */}
+            {caloriesVisible && model.caloriePoints.length > 1 && (
+              <path
+                d={model.calorieLinePath}
+                fill="none"
+                stroke={CALORIE_COLOR}
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            )}
+            {caloriesVisible &&
+              model.caloriePoints.map((point) => (
+                <circle
+                  key={point.entry.id}
+                  cx={point.x}
+                  cy={point.y}
+                  r={activeCalorie === point ? 4.5 : 3}
+                  fill={CALORIE_COLOR}
+                  stroke="#fff"
+                  strokeWidth={1.5}
+                />
+              ))}
+
+            {/* latest weight marker + quiet guide (hidden while scrubbing) */}
+            {latestWeight && !anchor && (
+              <>
+                <line
+                  x1={latestWeight.x}
+                  x2={latestWeight.x}
+                  y1={layout.top}
+                  y2={layout.bottom}
+                  stroke="#ececf0"
+                  strokeWidth={1}
+                />
+                <text
+                  x={Math.min(latestWeight.x, layout.right)}
+                  y={layout.top - 7}
+                  textAnchor="end"
+                  className="wc-axis-label"
+                >
+                  {formatDayMonth(new Date(latestWeight.entry.at))}
+                </text>
+                <circle cx={latestWeight.x} cy={latestWeight.y} r={8} fill={WEIGHT_COLOR} fillOpacity={0.14} />
+                <circle
+                  cx={latestWeight.x}
+                  cy={latestWeight.y}
+                  r={4}
+                  fill={WEIGHT_COLOR}
+                  stroke="#fff"
+                  strokeWidth={2}
+                />
+              </>
+            )}
+
+            {/* hover crosshair + point */}
+            {anchor && (
+              <>
+                <line
+                  x1={anchor.x}
+                  x2={anchor.x}
+                  y1={layout.top}
+                  y2={layout.bottom}
+                  stroke="#c7c7d1"
+                  strokeWidth={1}
+                  strokeDasharray="3 4"
+                />
+                {activeWeight && (
+                  <>
+                    <circle cx={activeWeight.x} cy={activeWeight.y} r={9} fill={WEIGHT_COLOR} fillOpacity={0.14} />
+                    <circle
+                      cx={activeWeight.x}
+                      cy={activeWeight.y}
+                      r={4.5}
+                      fill={WEIGHT_COLOR}
+                      stroke="#fff"
+                      strokeWidth={2.5}
+                    />
+                  </>
+                )}
+              </>
+            )}
+          </svg>
+        )}
+
+        {anchor && hover && (
+          <div
+            ref={tooltipRef}
+            className="wc-tooltip"
+            style={{ left: `${tooltipLeft}px`, top: `${tooltipTop}px` }}
+          >
+            <div className="wc-tooltip-date">{formatDayMonth(new Date(anchor.entry.at))}</div>
+            {activeWeight && (
+              <div className="wc-tooltip-row">
+                <span className="wc-tooltip-dot" style={{ background: WEIGHT_COLOR }} />
+                <span className="wc-tooltip-label">Weight</span>
+                <span className="wc-tooltip-value">{formatKg(activeWeight.entry.kg)} kg</span>
+              </div>
+            )}
+            {activeCalorie && (
+              <div className="wc-tooltip-row">
+                <span className="wc-tooltip-dot" style={{ background: CALORIE_COLOR }} />
+                <span className="wc-tooltip-label">Calories</span>
+                <span className="wc-tooltip-value">{formatKcal(activeCalorie.entry.kcal)} kcal</span>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

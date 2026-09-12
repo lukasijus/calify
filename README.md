@@ -1,7 +1,7 @@
 # Calify
 
-Calify is a local calorie and body tracker. The current MVP is a single,
-focused **weight-history graph**.
+Calify is a local calorie and body tracker: one page with a **weight and
+calories graph**, plus optional meal photos.
 
 ## Local development
 
@@ -45,3 +45,24 @@ Every push to `main` redeploys it via `.github/workflows/deploy-main-preview.yml
   tuned precisely. `WeightChart` already accepts an optional `trend` series and
   `movingAverage()` is implemented in `app/lib/weight.ts`, so a 7-day
   moving-average line can be switched on without reworking the page.
+
+## Calories graph (issue #19)
+
+- `Add calories` logs a kcal amount, a date/time, and an optional meal photo.
+  Entries persist in the `calorie_entries` Postgres table (image bytes inline,
+  `image_data`/`image_mime` columns), served through `/api/calories` (`GET`
+  list, `POST` add as `multipart/form-data`) and
+  `/api/calories/{id}/image` (`GET` the photo). Data access is in
+  `app/lib/calorie-repo.ts`.
+- Photos are capped at **8 MB** and must be JPEG, PNG, or WebP
+  (`MAX_CALORIE_IMAGE_BYTES` / `ALLOWED_CALORIE_IMAGE_TYPES` in
+  `app/lib/calorie.ts`, enforced client-side in `AddCalorieForm` and
+  server-side in the route + a Postgres `CHECK` constraint). The limit started
+  at 2 MB and was raised to 8 MB per the issue #19 discussion after phone
+  camera photos kept tripping it.
+- `WeightChart` draws both series on one canvas: weight keeps the left axis,
+  calories get their own right-hand axis (or the left axis alone if weight is
+  hidden). A legend above the chart has a checkbox per series to show/hide it;
+  the hover tooltip reports both values near the cursor.
+- Calorie entries with a photo show as a thumbnail strip below the chart,
+  scoped to the current period/time-range selection.

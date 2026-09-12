@@ -7,6 +7,14 @@
  * can grow later (goal weight, milestones, ...) without a migration.
  */
 
+import { toLocalIso } from "./date";
+import { sortByTime } from "./period";
+
+// Date and time-range helpers are shared with the calories entries (see
+// `app/lib/calorie.ts`); re-exported here so existing imports keep working.
+export { toLocalIso, toDateTimeLocalValue, formatDayMonth } from "./date";
+export { type Period, PERIODS, sortByTime, filterByPeriod } from "./period";
+
 export type WeightSource = "manual" | "import";
 
 export type WeightEntry = {
@@ -25,33 +33,6 @@ export type WeightEntry = {
   at: string;
   source: WeightSource;
 };
-
-export function sortByTime(entries: readonly WeightEntry[]): WeightEntry[] {
-  return [...entries].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
-}
-
-export type Period = "1M" | "3M" | "6M" | "All";
-
-export const PERIODS: readonly Period[] = ["1M", "3M", "6M", "All"];
-
-const PERIOD_DAYS: Record<Exclude<Period, "All">, number> = {
-  "1M": 30,
-  "3M": 91,
-  "6M": 182,
-};
-
-/**
- * Filter entries to a period, anchored to the most recent entry rather than
- * "now" (the sample data lives in the future and, more importantly, users care
- * about the window ending at their latest weigh-in).
- */
-export function filterByPeriod(entries: readonly WeightEntry[], period: Period): WeightEntry[] {
-  const sorted = sortByTime(entries);
-  if (period === "All" || sorted.length === 0) return sorted;
-  const anchor = Date.parse(sorted[sorted.length - 1].at);
-  const cutoff = anchor - PERIOD_DAYS[period] * 24 * 60 * 60 * 1000;
-  return sorted.filter((entry) => Date.parse(entry.at) >= cutoff);
-}
 
 /**
  * 7-day moving average, sampled at each entry. Not rendered yet, but the chart
@@ -88,39 +69,4 @@ export function createEntry(kg: number, at: Date, source: WeightSource = "manual
     at: toLocalIso(at),
     source,
   };
-}
-
-/** ISO-like string without timezone, so it round-trips in local time. */
-export function toLocalIso(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return (
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
-    `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.000`
-  );
-}
-
-/** Value for an `<input type="datetime-local">` (`YYYY-MM-DDTHH:mm`). */
-export function toDateTimeLocalValue(date: Date): string {
-  return toLocalIso(date).slice(0, 16);
-}
-
-const MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
-
-/** Compact axis/tooltip label, e.g. `8 Sep`. Fixed strings so it matches on
- * server and client regardless of the runtime's ICU locale data. */
-export function formatDayMonth(date: Date): string {
-  return `${date.getDate()} ${MONTHS[date.getMonth()]}`;
 }
