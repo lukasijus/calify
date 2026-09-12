@@ -1,6 +1,8 @@
 "use client";
 
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
+import { dailyCalories, type CalorieEntry } from "../lib/calorie";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { formatDayMonth, type WeightEntry } from "../lib/weight";
 
@@ -8,6 +10,7 @@ type TrendPoint = { at: string; kg: number };
 
 type WeightChartProps = {
   entries: WeightEntry[];
+  calories: CalorieEntry[];
   /**
    * Optional smoothed series (e.g. 7-day moving average). Rendered as a second,
    * thinner line so raw weigh-ins stay distinguishable from the trend. Not
@@ -18,7 +21,9 @@ type WeightChartProps = {
 };
 
 const ACCENT = "#2f6bff";
-const PADDING = { top: 20, right: 16, bottom: 28, left: 44 } as const;
+const PADDING = { top: 20, right: 66, bottom: 28, left: 44 } as const;
+
+const dayTime = (at: string) => Date.parse(`${at.slice(0, 10)}T12:00:00`);
 
 function formatKg(kg: number): string {
   return kg.toFixed(1);
@@ -83,7 +88,16 @@ function useContainerWidth() {
   return [ref, width] as const;
 }
 
-export function WeightChart({ entries, trend }: WeightChartProps) {
+export function WeightChart({ entries, calories, trend }: WeightChartProps) {
+  const [showWeight, setShowWeight] = useState(true);
+  const [showCalories, setShowCalories] = useState(true);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const daily = useMemo(() => dailyCalories(calories), [calories]);
+  const days = useMemo(() => [...new Set([...entries, ...calories].map((entry) => entry.at.slice(0, 10)))].sort(), [entries, calories]);
+  const day = selectedDay && days.includes(selectedDay) ? selectedDay : days.at(-1);
+  const dayIndex = day ? days.indexOf(day) : -1;
+  const dayCalories = calories.filter((entry) => entry.at.slice(0, 10) === day);
+  const dayWeights = entries.filter((entry) => entry.at.slice(0, 10) === day);
   const [containerRef, width] = useContainerWidth();
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<{ index: number; pointerY: number } | null>(null);
@@ -107,21 +121,21 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
   );
 
   const model = useMemo(() => {
-    if (entries.length === 0 || width === 0) return null;
+    if (days.length === 0 || width === 0) return null;
 
-    const times = entries.map((e) => Date.parse(e.at));
+    const times = days.map(dayTime);
     const minTime = Math.min(...times);
     const maxTime = Math.max(...times);
     const timeSpan = maxTime - minTime || 1;
 
     const values = entries.map((e) => e.kg);
-    const dataMin = Math.min(...values);
-    const dataMax = Math.max(...values);
+    const dataMin = values.length ? Math.min(...values) : 0;
+    const dataMax = values.length ? Math.max(...values) : 1;
     const valuePad = Math.max((dataMax - dataMin) * 0.18, 0.4);
     const scale = niceScale(dataMin - valuePad, dataMax + valuePad, 5);
 
     const xFor = (time: number) =>
-      entries.length === 1
+      days.length === 1
         ? (layout.left + layout.right) / 2
         : layout.left + ((time - minTime) / timeSpan) * (layout.right - layout.left);
     const yFor = (kg: number) =>
@@ -129,39 +143,45 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
 
     const points = entries.map((entry) => ({
       entry,
-      x: xFor(Date.parse(entry.at)),
+      x: xFor(dayTime(entry.at)),
       y: yFor(entry.kg),
     }));
 
     const trendPoints =
       trend && trend.length > 1
         ? trend
-            .filter((p) => Date.parse(p.at) >= minTime && Date.parse(p.at) <= maxTime)
-            .map((p) => ({ x: xFor(Date.parse(p.at)), y: yFor(p.kg) }))
+            .filter((p) => dayTime(p.at) >= minTime && dayTime(p.at) <= maxTime)
+            .map((p) => ({ x: xFor(dayTime(p.at)), y: yFor(p.kg) }))
         : [];
+
+    const calorieScale = niceScale(0, Math.max(1, ...daily.map((d) => d.kcal)), 5);
+    const calorieY = (kcal: number) => layout.bottom - (kcal / calorieScale.max) * (layout.bottom - layout.top);
+    const caloriePoints = daily.map((d) => ({ x: xFor(dayTime(d.day)), y: calorieY(d.kcal) }));
+    const dayPoints = days.map((day) => ({ day, x: xFor(dayTime(day)) }));
 
     // Sparse, non-overlapping x labels: first + last + evenly spaced middles.
     const maxLabels = width < 380 ? 3 : width < 560 ? 4 : 6;
     const labelIndexes: number[] = [];
-    if (points.length <= maxLabels) {
-      for (let i = 0; i < points.length; i++) labelIndexes.push(i);
+    if (dayPoints.length <= maxLabels) {
+      for (let i = 0; i < dayPoints.length; i++) labelIndexes.push(i);
     } else {
       for (let i = 0; i < maxLabels; i++) {
-        labelIndexes.push(Math.round((i * (points.length - 1)) / (maxLabels - 1)));
+        labelIndexes.push(Math.round((i * (dayPoints.length - 1)) / (maxLabels - 1)));
       }
     }
     const xLabels = labelIndexes
       .filter((value, i, arr) => arr.indexOf(value) === i)
       .map((index) => ({
         index,
-        x: points[index].x,
-        text: formatDayMonth(new Date(points[index].entry.at)),
+        x: dayPoints[index].x,
+        text: formatDayMonth(new Date(`${dayPoints[index].day}T12:00:00`)),
       }))
       .filter((label, i, arr) => i === 0 || label.text !== arr[i - 1].text);
 
     const tickDecimals = scale.step < 1 ? 1 : 0;
 
     return {
+      dayPoints, caloriePoints, calorieScale, calorieY,
       points,
       latest: points[points.length - 1],
       trendPoints,
@@ -171,7 +191,7 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
       xLabels,
       linePath: smoothPath(points),
     };
-  }, [entries, trend, width, layout]);
+  }, [entries, trend, width, layout, days, daily]);
 
   useLayoutEffect(() => {
     if (!tooltipRef.current) return;
@@ -194,20 +214,22 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
     }
     let nearest = 0;
     let best = Infinity;
-    model.points.forEach((point, index) => {
+    model.dayPoints.forEach((point, index) => {
       const distance = Math.abs(point.x - px);
       if (distance < best) {
         best = distance;
         nearest = index;
       }
     });
-    setHover({ index: nearest, pointerY: py });
+    const selected = model.dayPoints[nearest].day;
+    setSelectedDay(selected);
+    setHover({ index: model.points.findIndex((p) => p.entry.at.slice(0, 10) === selected), pointerY: py });
   };
 
   const clearHover = () => setHover(null);
 
-  const active = hover && model ? model.points[hover.index] : null;
-  const latest = model ? model.latest : null;
+  const active = showWeight && hover && model ? model.points[hover.index] : null;
+  const latest = showWeight && model ? model.latest : null;
 
   let tooltipLeft = 0;
   let tooltipTop = 0;
@@ -222,22 +244,27 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
   }
 
   return (
+    <>
+    <div className="wc-legend" role="group" aria-label="Show graphs">
+      <label><input type="checkbox" checked={showWeight} onChange={(e) => setShowWeight(e.target.checked)} /><span className="wc-legend-weight">━</span> Weight (kg)</label>
+      <label><input type="checkbox" checked={showCalories} onChange={(e) => setShowCalories(e.target.checked)} /><span className="wc-legend-calories">┄</span> Calories (kcal/day)</label>
+    </div>
     <div
       ref={containerRef}
-      className={`wc-chart${entries.length === 0 ? " wc-chart-empty" : ""}`}
+      className={`wc-chart${days.length === 0 ? " wc-chart-empty" : ""}`}
       onPointerMove={handlePointer}
       onPointerDown={handlePointer}
       onPointerLeave={clearHover}
       onPointerCancel={clearHover}
     >
-      {entries.length === 0 && <p>No weigh-ins yet. Add your first entry to start the graph.</p>}
+      {days.length === 0 && <p>No entries yet. Add weight or calories to start the graph.</p>}
       {width > 0 && model && (
         <svg
           width={width}
           height={height}
           viewBox={`0 0 ${width} ${height}`}
           role="img"
-          aria-label={`Weight history chart, latest ${formatKg(model.latest.entry.kg)} kilograms`}
+          aria-label={`History chart. ${showWeight ? "Weight in kilograms. " : ""}${showCalories ? "Daily calories in kcal." : ""} Use the day controls below to explore entries.`}
         >
           <defs>
             <linearGradient id="wc-area" x1="0" y1="0" x2="0" y2="1">
@@ -247,7 +274,7 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
           </defs>
 
           {/* horizontal grid + y labels */}
-          {model.ticks.map((tick) => {
+          {showWeight && entries.length > 0 && model.ticks.map((tick) => {
             const y = model.yFor(tick);
             return (
               <g key={tick}>
@@ -273,6 +300,11 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
             );
           })}
 
+          {showCalories && daily.length > 0 && <>
+            {model.calorieScale.ticks.map((tick) => <text key={tick} x={layout.right + 8} y={model.calorieY(tick)} dominantBaseline="middle" className="wc-axis-label">{tick} kcal</text>)}
+            <path d={model.caloriePoints.map((p, i) => `${i ? "L" : "M"}${p.x},${p.y}`).join(" ")} fill="none" stroke="#d97706" strokeWidth={2.25} strokeDasharray="6 4" />
+            {model.caloriePoints.map((p, i) => <circle key={daily[i].day} cx={p.x} cy={p.y} r={3.5} fill="#d97706" />)}
+          </>}
           {/* x labels */}
           {model.xLabels.map((label, i) => (
             <text
@@ -287,13 +319,13 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
           ))}
 
           {/* area + line */}
-          {model.points.length > 1 && (
+          {showWeight && model.points.length > 1 && (
             <path
-              d={`${model.linePath} L${layout.right},${layout.bottom} L${model.points[0].x},${layout.bottom} Z`}
+              d={`${model.linePath} L${model.points[model.points.length - 1].x},${layout.bottom} L${model.points[0].x},${layout.bottom} Z`}
               fill="url(#wc-area)"
             />
           )}
-          {model.trendPoints.length > 1 && (
+          {showWeight && model.trendPoints.length > 1 && (
             <path
               d={smoothPath(model.trendPoints)}
               fill="none"
@@ -303,14 +335,14 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
               strokeLinecap="round"
             />
           )}
-          <path
+          {showWeight && <path
             d={model.linePath}
             fill="none"
             stroke={ACCENT}
             strokeWidth={2.25}
             strokeLinecap="round"
             strokeLinejoin="round"
-          />
+          />}
 
           {/* latest value marker + quiet guide (hidden while scrubbing) */}
           {latest && !active && (
@@ -370,5 +402,21 @@ export function WeightChart({ entries, trend }: WeightChartProps) {
         </div>
       )}
     </div>
+    {day && <div className="wc-day-details">
+      <div className="wc-day-navigation">
+        <button className="wc-btn wc-btn-ghost" aria-label="Previous day with entries" disabled={dayIndex <= 0} onClick={() => { setSelectedDay(days[dayIndex - 1]); setHover(null); }}>←</button>
+        <div aria-live="polite">{day} · {dayCalories.length ? `${dayCalories.reduce((sum, entry) => sum + entry.kcal, 0)} kcal` : "No kcal logged"} · {dayWeights.length ? `${dayWeights.at(-1)!.kg} kg` : "No weight logged"}</div>
+        <button className="wc-btn wc-btn-ghost" aria-label="Next day with entries" disabled={dayIndex >= days.length - 1} onClick={() => { setSelectedDay(days[dayIndex + 1]); setHover(null); }}>→</button>
+      </div>
+      <input className="wc-day-slider" type="range" min={0} max={Math.max(0, days.length - 1)} value={dayIndex} aria-label="Browse days with entries" aria-valuetext={day} onChange={(e) => { setSelectedDay(days[Number(e.target.value)]); setHover(null); }} />
+      <div className="wc-thumbnails">
+        {dayCalories.filter((entry) => entry.hasImage).map((entry) => {
+          const src = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/calories/${encodeURIComponent(entry.id)}/image`;
+          return <a key={entry.id} href={src} target="_blank" rel="noreferrer"><Image unoptimized src={src} width={96} height={96} alt={`${entry.kcal} kcal at ${entry.at.slice(11, 16)}`} /><span>{entry.kcal} kcal · {entry.at.slice(11, 16)}</span></a>;
+        })}
+      </div>
+      {!dayCalories.some((entry) => entry.hasImage) && <p className="wc-day-empty">No images for this day.</p>}
+    </div>}
+    </>
   );
 }

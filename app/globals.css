@@ -306,3 +306,37 @@ main {
     align-self: flex-start;
   }
 }
+
+/* Calorie entry and combined history */
+.wc-add-actions, .wc-legend, .wc-legend label, .wc-day-navigation {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.wc-add-actions, .wc-legend { flex-wrap: wrap; }
+.wc-legend { margin-top: 16px; font-size: 0.85rem; }
+.wc-legend label { gap: 5px; }
+.wc-legend-weight { color: var(--accent); }
+.wc-legend-calories { color: #d97706; }
+.wc-modal {
+  width: min(440px, calc(100% - 24px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow-lg);
+}
+.wc-modal::backdrop { background: rgb(0 0 0 / 35%); }
+.wc-modal h2 { margin: 0 0 24px; }
+.wc-calorie-fields { display: grid; gap: 18px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.wc-field { min-width: 0; }
+.wc-field input { min-width: 0; max-width: 100%; width: 100%; }
+.wc-btn:disabled { opacity: 0.5; cursor: default; }
+.wc-day-details { border-top: 1px solid var(--border); padding-top: 16px; }
+.wc-day-navigation { justify-content: space-between; font-size: 0.85rem; }
+.wc-day-slider { width: 100%; margin: 18px 0; }
+.wc-thumbnails { display: flex; gap: 12px; overflow-x: auto; }
+.wc-thumbnails a { flex: 0 0 112px; color: var(--fg); font-size: 0.75rem; text-decoration: none; }
+.wc-thumbnails img { display: block; border-radius: 10px; object-fit: cover; margin-bottom: 6px; }
+.wc-day-empty { color: var(--muted); font-size: 0.85rem; }
