@@ -3,6 +3,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { formatDayMonth } from "../lib/date";
+import { chartHover } from "../lib/chart-hover";
 import type { WeightEntry } from "../lib/weight";
 
 type TrendPoint = { at: string; kg: number };
@@ -98,20 +99,6 @@ function useContainerWidth() {
     return () => observer.disconnect();
   }, []);
   return [ref, width] as const;
-}
-
-/** Closest point to a pixel x-coordinate, or null for an empty series. */
-function nearestByX<T extends { x: number }>(points: readonly T[], px: number): T | null {
-  let nearest: T | null = null;
-  let best = Infinity;
-  for (const point of points) {
-    const distance = Math.abs(point.x - px);
-    if (distance < best) {
-      best = distance;
-      nearest = point;
-    }
-  }
-  return nearest;
 }
 
 export function WeightChart({
@@ -290,14 +277,11 @@ export function WeightChart({
 
   const clearHover = () => setHover(null);
 
-  const activeWeight = hover && model ? nearestByX(model.weightPoints, hover.px) : null;
-  const activeCalorie = hover && model ? nearestByX(model.caloriePoints, hover.px) : null;
-  const anchor =
-    activeWeight && activeCalorie
-      ? Math.abs(activeWeight.x - (hover?.px ?? 0)) <= Math.abs(activeCalorie.x - (hover?.px ?? 0))
-        ? activeWeight
-        : activeCalorie
-      : activeWeight ?? activeCalorie;
+  const { activeWeight, activeCalorie, anchor } = chartHover(
+    model?.weightPoints ?? [],
+    model?.caloriePoints ?? [],
+    hover?.px ?? null,
+  );
   const latestWeight = model ? model.latestWeight : null;
 
   let tooltipLeft = 0;
