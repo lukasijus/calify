@@ -39,6 +39,7 @@ export function WeightScreen() {
   const [showCalorieForm, setShowCalorieForm] = useState(false);
   const [showWeight, setShowWeight] = useState(true);
   const [showCalories, setShowCalories] = useState(true);
+  const [hoveredDay, setHoveredDay] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -112,12 +113,22 @@ export function WeightScreen() {
     }
   }, []);
 
+  const handleHoverDayChange = useCallback((day: string | null) => setHoveredDay(day), []);
+
   const visible = useMemo(() => filterByPeriod(entries, period), [entries, period]);
   const visibleCalories = useMemo(() => filterByPeriod(calories, period), [calories, period]);
   const calorieTotals = useMemo(() => filterByPeriod(dailyCalories(calories), period), [calories, period]);
+  /** Which day's photos to show: the day under the pointer while scrubbing
+   * the chart, falling back to the most recent day with calories once the
+   * pointer leaves (visibleCalories is already sorted ascending). */
+  const activeDay = useMemo(() => {
+    if (hoveredDay) return hoveredDay;
+    const latest = visibleCalories[visibleCalories.length - 1];
+    return latest ? latest.at.slice(0, 10) : null;
+  }, [hoveredDay, visibleCalories]);
   const thumbnails = useMemo(
-    () => visibleCalories.filter((entry) => entry.imageUrl),
-    [visibleCalories],
+    () => visibleCalories.filter((entry) => entry.imageUrl && entry.at.slice(0, 10) === activeDay),
+    [visibleCalories, activeDay],
   );
 
   const stats = useMemo(() => {
@@ -212,23 +223,28 @@ export function WeightScreen() {
           showCalories={showCalories}
           onToggleWeight={() => setShowWeight((v) => !v)}
           onToggleCalories={() => setShowCalories((v) => !v)}
+          onHoverDayChange={handleHoverDayChange}
         />
       ) : (
         <div className="wc-chart wc-chart-empty" aria-hidden />
       )}
 
-      {showCalories && thumbnails.length > 0 && (
-        <div className="wc-thumbnails" role="list" aria-label="Meal photos">
-          {thumbnails.map((entry) => (
-            <figure key={entry.id} className="wc-thumbnail" role="listitem">
-              {/* eslint-disable-next-line @next/next/no-img-element -- served
-                  from our own API, not the Next.js image optimizer's domains */}
-              <img src={imageSrc(entry.imageUrl!)} alt={`${entry.kcal} kcal`} loading="lazy" />
-              <figcaption>
-                {formatDayMonth(new Date(entry.at))} · {entry.kcal} kcal
-              </figcaption>
-            </figure>
-          ))}
+      {showCalories && activeDay && thumbnails.length > 0 && (
+        <div className="wc-thumbnails">
+          <h2 className="wc-thumbnails-day">{formatDayMonth(new Date(`${activeDay}T00:00:00`))}</h2>
+          <div
+            role="list"
+            aria-label={`Meal photos for ${formatDayMonth(new Date(`${activeDay}T00:00:00`))}`}
+          >
+            {thumbnails.map((entry) => (
+              <figure key={entry.id} className="wc-thumbnail" role="listitem">
+                {/* eslint-disable-next-line @next/next/no-img-element -- served
+                    from our own API, not the Next.js image optimizer's domains */}
+                <img src={imageSrc(entry.imageUrl!)} alt={`${entry.kcal} kcal`} loading="lazy" />
+                <figcaption>{entry.kcal} kcal</figcaption>
+              </figure>
+            ))}
+          </div>
         </div>
       )}
     </section>
