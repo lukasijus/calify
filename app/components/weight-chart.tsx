@@ -27,6 +27,11 @@ type WeightChartProps = {
   showCalories: boolean;
   onToggleWeight: () => void;
   onToggleCalories: () => void;
+  /** Fires with the calendar day (`YYYY-MM-DD`) under the pointer while
+   * scrubbing the chart, and `null` once the pointer leaves — lets the
+   * parent swap the day's meal photos in step with the crosshair instead of
+   * dumping every photo in the visible range below the chart. */
+  onHoverDayChange?: (day: string | null) => void;
 };
 
 const WEIGHT_COLOR = "#2f6bff";
@@ -109,6 +114,7 @@ export function WeightChart({
   showCalories,
   onToggleWeight,
   onToggleCalories,
+  onHoverDayChange,
 }: WeightChartProps) {
   const [containerRef, width] = useContainerWidth();
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -281,6 +287,11 @@ export function WeightChart({
     ? chartSelection(model.weightPoints, model.caloriePoints, hover.px)
     : { anchor: null, activeWeight: null, activeCalorie: null };
   const latestWeight = model ? model.latestWeight : null;
+
+  const hoverDay = anchor ? anchor.entry.at.slice(0, 10) : null;
+  useLayoutEffect(() => {
+    onHoverDayChange?.(hoverDay);
+  }, [hoverDay, onHoverDayChange]);
 
   let tooltipLeft = 0;
   let tooltipTop = 0;
