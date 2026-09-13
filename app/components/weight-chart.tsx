@@ -3,6 +3,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { formatDayMonth } from "../lib/date";
+import { chartSelection } from "../lib/chart-data";
 import type { WeightEntry } from "../lib/weight";
 
 type TrendPoint = { at: string; kg: number };
@@ -18,7 +19,7 @@ type WeightChartProps = {
    * without reworking the chart.
    */
   trend?: TrendPoint[];
-  /** Calorie log entries drawn on the same canvas, right-hand axis. */
+  /** Daily calorie totals drawn on the same canvas, right-hand axis. */
   calories?: CaloriePoint[];
   /** Legend/checkbox visibility, lifted to the parent so other UI (e.g. the
    * image thumbnail strip) can react to the same toggle. */
@@ -98,20 +99,6 @@ function useContainerWidth() {
     return () => observer.disconnect();
   }, []);
   return [ref, width] as const;
-}
-
-/** Closest point to a pixel x-coordinate, or null for an empty series. */
-function nearestByX<T extends { x: number }>(points: readonly T[], px: number): T | null {
-  let nearest: T | null = null;
-  let best = Infinity;
-  for (const point of points) {
-    const distance = Math.abs(point.x - px);
-    if (distance < best) {
-      best = distance;
-      nearest = point;
-    }
-  }
-  return nearest;
 }
 
 export function WeightChart({
@@ -290,14 +277,9 @@ export function WeightChart({
 
   const clearHover = () => setHover(null);
 
-  const activeWeight = hover && model ? nearestByX(model.weightPoints, hover.px) : null;
-  const activeCalorie = hover && model ? nearestByX(model.caloriePoints, hover.px) : null;
-  const anchor =
-    activeWeight && activeCalorie
-      ? Math.abs(activeWeight.x - (hover?.px ?? 0)) <= Math.abs(activeCalorie.x - (hover?.px ?? 0))
-        ? activeWeight
-        : activeCalorie
-      : activeWeight ?? activeCalorie;
+  const { anchor, activeWeight, activeCalorie } = hover && model
+    ? chartSelection(model.weightPoints, model.caloriePoints, hover.px)
+    : { anchor: null, activeWeight: null, activeCalorie: null };
   const latestWeight = model ? model.latestWeight : null;
 
   let tooltipLeft = 0;
@@ -440,7 +422,7 @@ export function WeightChart({
               />
             )}
 
-            {/* calorie line + per-entry dots (logs are sparse, so every point
+            {/* calorie line + daily dots (logs are sparse, so every point
                 is marked rather than only the latest). */}
             {caloriesVisible && model.caloriePoints.length > 1 && (
               <path
