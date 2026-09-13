@@ -10,6 +10,7 @@ import {
   type WeightEntry,
 } from "../lib/weight";
 import { createCalorieEntry, type CalorieEntry } from "../lib/calorie";
+import { dailyCalories } from "../lib/chart-data";
 import { calorieSaveError } from "../lib/upload-error";
 import { formatDayMonth } from "../lib/date";
 import { AddWeightForm } from "./add-weight-form";
@@ -113,6 +114,7 @@ export function WeightScreen() {
 
   const visible = useMemo(() => filterByPeriod(entries, period), [entries, period]);
   const visibleCalories = useMemo(() => filterByPeriod(calories, period), [calories, period]);
+  const calorieTotals = useMemo(() => filterByPeriod(dailyCalories(calories), period), [calories, period]);
   const thumbnails = useMemo(
     () => visibleCalories.filter((entry) => entry.imageUrl),
     [visibleCalories],
@@ -205,7 +207,7 @@ export function WeightScreen() {
       {ready ? (
         <WeightChart
           entries={visible}
-          calories={visibleCalories.map((entry) => ({ id: entry.id, at: entry.at, kcal: entry.kcal }))}
+          calories={calorieTotals}
           showWeight={showWeight}
           showCalories={showCalories}
           onToggleWeight={() => setShowWeight((v) => !v)}
