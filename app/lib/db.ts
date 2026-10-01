@@ -77,6 +77,16 @@ async function runBootstrap(): Promise<void> {
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       )
     `);
+    // Additional photos retain the original first-photo storage and URL.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS calorie_entry_images (
+        entry_id TEXT NOT NULL REFERENCES calorie_entries(id) ON DELETE CASCADE,
+        position INTEGER NOT NULL CHECK (position > 0),
+        image_mime TEXT NOT NULL CHECK (image_mime IN ('image/jpeg', 'image/png', 'image/webp')),
+        image_data BYTEA NOT NULL CHECK (octet_length(image_data) <= 8388608),
+        PRIMARY KEY (entry_id, position)
+      )
+    `);
     await seedHistorical(client);
   } finally {
     client.release();

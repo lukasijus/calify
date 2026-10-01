@@ -6,7 +6,7 @@ import { ALLOWED_CALORIE_IMAGE_TYPES, MAX_CALORIE_IMAGE_BYTES } from "../lib/cal
 import { toDateTimeLocalValue } from "../lib/date";
 
 type AddCalorieFormProps = {
-  onAdd: (kcal: number, at: Date, image: File | null) => void;
+  onAdd: (kcal: number, at: Date, images: File[]) => void;
   onClose: () => void;
 };
 
@@ -15,7 +15,7 @@ const MAX_IMAGE_MB = MAX_CALORIE_IMAGE_BYTES / (1024 * 1024);
 export function AddCalorieForm({ onAdd, onClose }: AddCalorieFormProps) {
   const [kcal, setKcal] = useState("");
   const [at, setAt] = useState(() => toDateTimeLocalValue(new Date()));
-  const [image, setImage] = useState<File | null>(null);
+  const [images, setImages] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const kcalInputRef = useRef<HTMLInputElement>(null);
 
@@ -24,25 +24,23 @@ export function AddCalorieForm({ onAdd, onClose }: AddCalorieFormProps) {
   }, []);
 
   const handleImageChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] ?? null;
-    if (!file) {
-      setImage(null);
-      return;
-    }
-    if (!ALLOWED_CALORIE_IMAGE_TYPES.includes(file.type as (typeof ALLOWED_CALORIE_IMAGE_TYPES)[number])) {
-      setError("Image must be JPEG, PNG, or WebP.");
-      event.target.value = "";
-      setImage(null);
-      return;
-    }
-    if (file.size > MAX_CALORIE_IMAGE_BYTES) {
-      setError(`Image must be ${MAX_IMAGE_MB} MB or smaller. Choose a smaller image.`);
-      event.target.value = "";
-      setImage(null);
-      return;
+    const files = Array.from(event.target.files ?? []);
+    for (const file of files) {
+      if (!ALLOWED_CALORIE_IMAGE_TYPES.includes(file.type as (typeof ALLOWED_CALORIE_IMAGE_TYPES)[number])) {
+        setError(`${file.name}: image must be JPEG, PNG, or WebP.`);
+        event.target.value = "";
+        setImages([]);
+        return;
+      }
+      if (file.size > MAX_CALORIE_IMAGE_BYTES) {
+        setError(`${file.name}: image must be ${MAX_IMAGE_MB} MB or smaller.`);
+        event.target.value = "";
+        setImages([]);
+        return;
+      }
     }
     setError(null);
-    setImage(file);
+    setImages(files);
   };
 
   const handleSubmit = (event: FormEvent) => {
@@ -57,7 +55,7 @@ export function AddCalorieForm({ onAdd, onClose }: AddCalorieFormProps) {
       setError("Enter a valid date");
       return;
     }
-    onAdd(parsed, date, image);
+    onAdd(parsed, date, images);
   };
 
   return (
@@ -94,8 +92,8 @@ export function AddCalorieForm({ onAdd, onClose }: AddCalorieFormProps) {
           />
         </label>
         <label className="wc-field wc-field-wide">
-          <span>Image (optional, JPEG / PNG / WebP, up to {MAX_IMAGE_MB} MB)</span>
-          <input type="file" accept={ALLOWED_CALORIE_IMAGE_TYPES.join(",")} onChange={handleImageChange} />
+          <span>Images (optional, JPEG / PNG / WebP, up to {MAX_IMAGE_MB} MB each)</span>
+          <input type="file" multiple accept={ALLOWED_CALORIE_IMAGE_TYPES.join(",")} onChange={handleImageChange} />
         </label>
       </div>
       {error && (
