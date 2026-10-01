@@ -1,7 +1,7 @@
 /** Handles proxy HTML errors as well as the API's JSON validation errors. */
 export async function calorieSaveError(response: Response): Promise<string> {
   if (response.status === 413) {
-    return "Image must be 8 MB or smaller. Choose a smaller image.";
+    return "Upload too large. Each image must be 8 MB or smaller; try smaller images or fewer images at once.";
   }
   if (response.status === 400) {
     try {

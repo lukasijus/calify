@@ -4,10 +4,14 @@ import { getEntryImage } from "../../../../lib/calorie-repo";
 // Image bytes live in Postgres and can change per-request; never prerender.
 export const dynamic = "force-dynamic";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const position = Number(new URL(request.url).searchParams.get("position") ?? "0");
+  if (!Number.isSafeInteger(position) || position < 0) {
+    return NextResponse.json({ error: "invalid image position" }, { status: 400 });
+  }
   try {
-    const image = await getEntryImage(id);
+    const image = await getEntryImage(id, position);
     if (!image) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }

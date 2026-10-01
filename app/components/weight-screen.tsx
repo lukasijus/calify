@@ -89,8 +89,8 @@ export function WeightScreen() {
     }
   }, []);
 
-  const handleAddCalories = useCallback(async (kcal: number, at: Date, image: File | null) => {
-    const optimistic = createCalorieEntry(kcal, at, image ? URL.createObjectURL(image) : null);
+  const handleAddCalories = useCallback(async (kcal: number, at: Date, images: File[]) => {
+    const optimistic = createCalorieEntry(kcal, at, images.map((image) => URL.createObjectURL(image)));
     setCalories((prev) => sortByTime([...prev, optimistic]));
     setShowCalorieForm(false);
     setPeriod("All");
@@ -99,7 +99,7 @@ export function WeightScreen() {
       const form = new FormData();
       form.set("kcal", String(optimistic.kcal));
       form.set("at", optimistic.at);
-      if (image) form.set("image", image);
+      for (const image of images) form.append("image", image);
       const response = await fetch(CALORIES_API, { method: "POST", body: form });
       if (!response.ok) throw new Error(await calorieSaveError(response));
       const { entry } = (await response.json()) as { entry: CalorieEntry };
@@ -109,7 +109,7 @@ export function WeightScreen() {
       setCalories((prev) => prev.filter((item) => item.id !== optimistic.id));
       setError(cause instanceof Error ? cause.message : "Couldn't save calories. Try again.");
     } finally {
-      if (optimistic.imageUrl?.startsWith("blob:")) URL.revokeObjectURL(optimistic.imageUrl);
+      for (const url of optimistic.imageUrls) URL.revokeObjectURL(url);
     }
   }, []);
 
@@ -127,7 +127,10 @@ export function WeightScreen() {
     return latest ? latest.at.slice(0, 10) : null;
   }, [hoveredDay, visibleCalories]);
   const thumbnails = useMemo(
-    () => visibleCalories.filter((entry) => entry.imageUrl && entry.at.slice(0, 10) === activeDay),
+    () => visibleCalories
+      .filter((entry) => entry.at.slice(0, 10) === activeDay)
+      .flatMap((entry) => (entry.imageUrls ?? (entry.imageUrl ? [entry.imageUrl] : []))
+        .map((imageUrl) => ({ ...entry, imageUrl }))),
     [visibleCalories, activeDay],
   );
 
@@ -237,7 +240,7 @@ export function WeightScreen() {
             aria-label={`Meal photos for ${formatDayMonth(new Date(`${activeDay}T00:00:00`))}`}
           >
             {thumbnails.map((entry) => (
-              <figure key={entry.id} className="wc-thumbnail" role="listitem">
+              <figure key={`${entry.id}-${entry.imageUrl}`} className="wc-thumbnail" role="listitem">
                 {/* eslint-disable-next-line @next/next/no-img-element -- served
                     from our own API, not the Next.js image optimizer's domains */}
                 <img src={imageSrc(entry.imageUrl!)} alt={`${entry.kcal} kcal`} loading="lazy" />

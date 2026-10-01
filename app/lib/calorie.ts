@@ -3,7 +3,7 @@
  *
  * Mirrors `app/lib/weight.ts`: entries are persisted server-side in Postgres
  * (see `app/lib/db.ts` and the `/api/calories` route). A calorie entry may
- * optionally carry a photo, served separately from `/api/calories/{id}/image`
+ * optionally carry photos, served separately from `/api/calories/{id}/image`
  * so listing entries stays cheap.
  */
 
@@ -20,6 +20,8 @@ export type CalorieEntry = {
   at: string;
   /** `/api/calories/{id}/image` when a photo was attached, otherwise null. */
   imageUrl: string | null;
+  /** All attached photos, in selection order. */
+  imageUrls: string[];
   source: CalorieSource;
 };
 
@@ -32,7 +34,7 @@ export const ALLOWED_CALORIE_IMAGE_TYPES = ["image/jpeg", "image/png", "image/we
 export function createCalorieEntry(
   kcal: number,
   at: Date,
-  imageUrl: string | null = null,
+  imageUrls: string[] = [],
 ): CalorieEntry {
   return {
     id:
@@ -41,7 +43,8 @@ export function createCalorieEntry(
         : `c-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     kcal: Math.round(kcal),
     at: toLocalIso(at),
-    imageUrl,
+    imageUrl: imageUrls[0] ?? null,
+    imageUrls,
     source: "manual",
   };
 }

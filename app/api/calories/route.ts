@@ -37,9 +37,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "at must be a local ISO date-time string" }, { status: 400 });
   }
 
-  let image: { mime: string; data: Buffer } | null = null;
-  const file = form.get("image");
-  if (file instanceof File && file.size > 0) {
+  const images: { mime: string; data: Buffer }[] = [];
+  const files = form.getAll("image");
+  for (const file of files) {
+    if (!(file instanceof File)) {
+      return NextResponse.json({ error: "image must be a file" }, { status: 400 });
+    }
+    if (file.size === 0) continue;
     if (!ALLOWED_CALORIE_IMAGE_TYPES.includes(file.type as (typeof ALLOWED_CALORIE_IMAGE_TYPES)[number])) {
       return NextResponse.json({ error: "image must be JPEG, PNG, or WebP" }, { status: 400 });
     }
@@ -49,10 +53,15 @@ export async function POST(request: Request) {
         { status: 413 },
       );
     }
-    image = { mime: file.type, data: Buffer.from(await file.arrayBuffer()) };
+  }
+  // Validate every attachment before reading bytes or saving any data.
+  for (const file of files) {
+    if (file instanceof File && file.size > 0) {
+      images.push({ mime: file.type, data: Buffer.from(await file.arrayBuffer()) });
+    }
   }
 
-  const entry: Omit<CalorieEntry, "imageUrl"> = {
+  const entry: Omit<CalorieEntry, "imageUrl" | "imageUrls"> = {
     id: crypto.randomUUID(),
     kcal: Math.round(kcalNumber),
     at: normalizeLocalIso(at),
@@ -60,7 +69,7 @@ export async function POST(request: Request) {
   };
 
   try {
-    return NextResponse.json({ entry: await saveEntry(entry, image) }, { status: 201 });
+    return NextResponse.json({ entry: await saveEntry(entry, images) }, { status: 201 });
   } catch (error) {
     console.error("POST /api/calories failed", error);
     return NextResponse.json({ error: "storage unavailable" }, { status: 503 });
